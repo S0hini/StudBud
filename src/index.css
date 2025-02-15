@@ -1,0 +1,40 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-black text-white;
+  }
+}
+
+.gradient-blur {
+  background: radial-gradient(circle at center, rgba(255, 255, 255, 0.1) 0%, transparent 70%);
+}
+
+.hero-gradient {
+  background: linear-gradient(to bottom right, rgba(121, 40, 202, 0.3), rgba(255, 0, 128, 0.3));
+}
+
+.card-gradient {
+  background: linear-gradient(to bottom right, rgba(17, 17, 17, 0.9), rgba(0, 0, 0, 0.9));
+}
+
+.text-gradient {
+  background: linear-gradient(to right, #fff 0%, #8b5cf6 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.animate-float {
+  animation: float 6s ease-in-out infinite;
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-20px);
+  }
+}
