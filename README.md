@@ -110,7 +110,7 @@ Thanks to these amazing contributors for making this project possible!
 <table>
   <tr>
     <td align="center"><a href="https://github.com/Sahnik0"><img src="https://github.com/Sahnik0.png" width="100px;" alt=""/><br /><sub><b>Sahnik Biswas</b></sub></a></td>
-    <td align="center"><a href="https://github.com/S0hini"><img src="https://github.com/sohini-adamas.png" width="100px;" alt=""/><br /><sub><b>Sohini Das</b></sub></a></td>
+    <td align="center"><a href="https://github.com/S0hini"><img src="https://github.com/S0hini.png" width="100px;" alt=""/><br /><sub><b>Sohini Das</b></sub></a></td>
   </tr>
 </table>  
 
