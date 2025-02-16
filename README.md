@@ -105,7 +105,7 @@ This project is **open-source** under the **MIT License**.
 
 ## 👥 Contributors  
 
-Thanks to these amazing contributors for making this project possible!  
+ 
 
 <table>
   <tr>
