@@ -119,4 +119,3 @@ Want to contribute? **Fork the repository and make your first pull request!** �
 ---
 
 💡 **Join the project and help build the future of AI-driven academic assistance!** 🚀  
-```
