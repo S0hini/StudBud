@@ -1,5 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, getDocs, where, doc, updateDoc, arrayUnion, arrayRemove, orderBy } from 'firebase/firestore';
+import { 
+  collection, 
+  query, 
+  getDocs, 
+  where, 
+  doc, 
+  updateDoc, 
+  arrayUnion, 
+  arrayRemove, 
+  orderBy, 
+  getDoc,
+  writeBatch,
+  serverTimestamp
+} from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuthStore } from '../lib/store';
 import { Search, UserPlus, UserMinus, Send, MessageCircle } from 'lucide-react';
@@ -11,7 +24,10 @@ interface User {
   email: string;
   credits: number;
   friends: string[];
-  friendRequests: string[];
+  friendRequests: {
+    sent: string[];
+    received: string[];
+  };
 }
 
 export function FriendsPage() {
@@ -28,6 +44,33 @@ export function FriendsPage() {
 
       try {
         const usersRef = collection(db, 'users');
+        
+        // First, initialize friend requests for all users
+        const initSnapshot = await getDocs(usersRef);
+        const batch = writeBatch(db);
+        let needsInitialization = false;
+        
+        initSnapshot.docs.forEach((doc) => {
+          const userData = doc.data();
+          if (!userData.friendRequests) {
+            needsInitialization = true;
+            const userRef = doc.ref;
+            batch.update(userRef, {
+              friends: userData.friends || [],
+              friendRequests: {
+                sent: [],
+                received: []
+              }
+            });
+          }
+        });
+
+        if (needsInitialization) {
+          await batch.commit();
+          console.log('Successfully initialized friend requests for all users');
+        }
+
+        // Then fetch users as before
         const q = query(
           usersRef,
           orderBy('email')
@@ -66,46 +109,58 @@ export function FriendsPage() {
     if (!currentUserData) return;
 
     const isFriend = currentUserData.friends?.includes(friendId);
+    const hasSentRequest = currentUserData.friendRequests?.sent?.includes(friendId);
+    const hasReceivedRequest = currentUserData.friendRequests?.received?.includes(friendId);
     const userRef = doc(db, 'users', currentUserData.id);
+    const friendRef = doc(db, 'users', friendId);
 
     try {
-      await updateDoc(userRef, {
-        friends: isFriend ? arrayRemove(friendId) : arrayUnion(friendId)
-      });
+      if (isFriend) {
+        // Remove friend
+        await updateDoc(userRef, {
+          friends: arrayRemove(friendId)
+        });
+        await updateDoc(friendRef, {
+          friends: arrayRemove(currentUserData.id)
+        });
+      } else if (hasReceivedRequest) {
+        // Accept friend request
+        await updateDoc(userRef, {
+          'friendRequests.received': arrayRemove(friendId),
+          friends: arrayUnion(friendId)
+        });
+        await updateDoc(friendRef, {
+          'friendRequests.sent': arrayRemove(currentUserData.id),
+          friends: arrayUnion(currentUserData.id)
+        });
+      } else if (hasSentRequest) {
+        // Cancel friend request
+        await updateDoc(userRef, {
+          'friendRequests.sent': arrayRemove(friendId)
+        });
+        await updateDoc(friendRef, {
+          'friendRequests.received': arrayRemove(currentUserData.id)
+        });
+      } else {
+        // Send friend request
+        await updateDoc(userRef, {
+          'friendRequests.sent': arrayUnion(friendId)
+        });
+        await updateDoc(friendRef, {
+          'friendRequests.received': arrayUnion(currentUserData.id)
+        });
+      }
 
-      setCurrentUserData(prev => {
-        if (!prev) return null;
-        return {
-          ...prev,
-          friends: isFriend
-            ? prev.friends.filter(id => id !== friendId)
-            : [...prev.friends, friendId]
-        };
-      });
+      // Refresh current user data
+      const updatedUserDoc = await getDoc(userRef);
+      if (updatedUserDoc.exists()) {
+        setCurrentUserData({
+          id: updatedUserDoc.id,
+          ...updatedUserDoc.data()
+        } as User);
+      }
     } catch (err) {
-      console.error('Error updating friends:', err);
-    }
-  };
-
-  // New function to approve friend requests.
-  const approveFriendRequest = async (friendId: string) => {
-    if (!currentUserData) return;
-    const userRef = doc(db, 'users', currentUserData.id);
-    try {
-      await updateDoc(userRef, {
-        friendRequests: arrayRemove(friendId),
-        friends: arrayUnion(friendId)
-      });
-      setCurrentUserData(prev => {
-        if (!prev) return null;
-        return {
-          ...prev,
-          friendRequests: prev.friendRequests.filter((id: string) => id !== friendId),
-          friends: [...prev.friends, friendId]
-        };
-      });
-    } catch (err) {
-      console.error('Error approving friend request:', err);
+      console.error('Error updating friend status:', err);
     }
   };
 
@@ -114,11 +169,15 @@ export function FriendsPage() {
     user.email.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  // Compute friend requests using the users list.
-  const friendRequestUsers =
-    currentUserData && currentUserData.friendRequests
-      ? users.filter(u => currentUserData.friendRequests.includes(u.id))
-      : [];
+  // Compute friend requests using the users list
+  const friendRequestUsers = {
+    received: currentUserData?.friendRequests?.received 
+      ? users.filter(u => currentUserData.friendRequests.received.includes(u.id))
+      : [],
+    sent: currentUserData?.friendRequests?.sent
+      ? users.filter(u => currentUserData.friendRequests.sent.includes(u.id))
+      : []
+  };
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-8">
@@ -138,24 +197,56 @@ export function FriendsPage() {
             </div>
           </div>
 
-          {/* New Friend Requests section */}
-          {currentUserData && currentUserData.friendRequests && currentUserData.friendRequests.length > 0 && (
+          {/* Friend Requests section */}
+          {(friendRequestUsers.received.length > 0 || friendRequestUsers.sent.length > 0) && (
             <div className="card-gradient rounded-xl p-6 mb-8">
-              <h2 className="text-xl font-bold mb-4">Friend Requests</h2>
-              {friendRequestUsers.map((requester) => (
-                <div key={requester.id} className="flex items-center justify-between mb-2">
-                  <div>
-                    <h3 className="font-semibold">{requester.displayName}</h3>
-                    <p className="text-gray-400 text-sm">{requester.email}</p>
-                  </div>
-                  <button
-                    onClick={() => approveFriendRequest(requester.id)}
-                    className="p-2 rounded-lg bg-green-500/10 text-green-500 hover:bg-green-500/20 transition-colors"
-                  >
-                    Approve
-                  </button>
-                </div>
-              ))}
+              {friendRequestUsers.received.length > 0 && (
+                <>
+                  <h2 className="text-xl font-bold mb-4">Incoming Friend Requests</h2>
+                  {friendRequestUsers.received.map((requester) => (
+                    <div key={requester.id} className="flex items-center justify-between mb-4">
+                      <div>
+                        <h3 className="font-semibold">{requester.displayName}</h3>
+                        <p className="text-gray-400 text-sm">{requester.email}</p>
+                      </div>
+                      <div className="flex space-x-2">
+                        <button
+                          onClick={() => toggleFriend(requester.id)}
+                          className="px-3 py-1 rounded-lg bg-green-500/10 text-green-500 hover:bg-green-500/20 transition-colors"
+                        >
+                          Accept
+                        </button>
+                        <button
+                          onClick={() => toggleFriend(requester.id)}
+                          className="px-3 py-1 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500/20 transition-colors"
+                        >
+                          Decline
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </>
+              )}
+
+              {friendRequestUsers.sent.length > 0 && (
+                <>
+                  <h2 className="text-xl font-bold mb-4 mt-6">Pending Requests</h2>
+                  {friendRequestUsers.sent.map((recipient) => (
+                    <div key={recipient.id} className="flex items-center justify-between mb-4">
+                      <div>
+                        <h3 className="font-semibold">{recipient.displayName}</h3>
+                        <p className="text-gray-400 text-sm">{recipient.email}</p>
+                      </div>
+                      <button
+                        onClick={() => toggleFriend(recipient.id)}
+                        className="px-3 py-1 rounded-lg bg-gray-500/10 text-gray-400 hover:bg-gray-500/20 transition-colors"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  ))}
+                </>
+              )}
             </div>
           )}
 
@@ -182,6 +273,10 @@ export function FriendsPage() {
                       >
                         {currentUserData?.friends?.includes(userData.id) ? (
                           <UserMinus className="w-5 h-5" />
+                        ) : currentUserData?.friendRequests?.sent?.includes(userData.id) ? (
+                          <span className="text-sm px-2">Cancel Request</span>
+                        ) : currentUserData?.friendRequests?.received?.includes(userData.id) ? (
+                          <span className="text-sm px-2">Accept Request</span>
                         ) : (
                           <UserPlus className="w-5 h-5" />
                         )}
@@ -212,9 +307,15 @@ export function FriendsPage() {
 
         <div>
           {selectedFriend ? (
-            <div className="card-gradient rounded-xl overflow-hidden">
-              <Chat friendId={selectedFriend.id} friendName={selectedFriend.name} />
-            </div>
+            currentUserData?.friends?.includes(selectedFriend.id) ? (
+              <div className="card-gradient rounded-xl overflow-hidden">
+                <Chat friendId={selectedFriend.id} friendName={selectedFriend.name} />
+              </div>
+            ) : (
+              <div className="card-gradient rounded-xl p-6 h-[400px] flex items-center justify-center">
+                <p className="text-gray-400">You can only chat with accepted friends</p>
+              </div>
+            )
           ) : (
             <div className="card-gradient rounded-xl p-6 h-[400px] flex items-center justify-center">
               <p className="text-gray-400">Select a friend to start chatting</p>
