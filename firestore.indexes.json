@@ -1,0 +1,22 @@
+{
+  "firestore": {
+    "indexes": [
+      {
+        "collectionGroup": "notes",
+        "queryScope": "COLLECTION",
+        "fields": [
+          { "fieldPath": "userId", "order": "ASCENDING" },
+          { "fieldPath": "timestamp", "order": "DESCENDING" }
+        ]
+      },
+      {
+        "collectionGroup": "tutorChats",
+        "queryScope": "COLLECTION",
+        "fields": [
+          { "fieldPath": "userId", "order": "ASCENDING" },
+          { "fieldPath": "timestamp", "order": "ASCENDING" }
+        ]
+      }
+    ]
+  }
+}
