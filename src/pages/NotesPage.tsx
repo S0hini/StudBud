@@ -1,35 +1,69 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Upload, FileText, Loader } from 'lucide-react';
 import { model } from '../lib/gemini';
+import { db } from '../lib/firebase';
+import { collection, addDoc, getDocs, query, orderBy } from "firebase/firestore";
 
 export function NotesPage() {
   const [loading, setLoading] = useState(false);
   const [videoUrl, setVideoUrl] = useState('');
   const [notes, setNotes] = useState('');
   const [error, setError] = useState('');
+  const [savedNotes, setSavedNotes] = useState([]);
+
+  useEffect(() => {
+    fetchNotes();
+  }, []);
+
+  const fetchNotes = async () => {
+    try {
+      const notesQuery = query(collection(db, "notes"), orderBy("timestamp", "desc"));
+      const querySnapshot = await getDocs(notesQuery);
+      const notesData = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setSavedNotes(notesData);
+    } catch (err) {
+      console.error("Error fetching notes:", err);
+      setError("Failed to fetch saved notes");
+    }
+  };
 
   const generateNotes = async () => {
-    if (!videoUrl.includes('youtube.com') && !videoUrl.includes('youtu.be')) {
-      setError('Please enter a valid YouTube URL');
+    if (!videoUrl.includes("youtube.com") && !videoUrl.includes("youtu.be")) {
+      setError("Please enter a valid YouTube URL");
       return;
     }
-
+  
     setLoading(true);
-    setError('');
-
+    setError("");
+  
     try {
       const prompt = `Generate detailed, structured notes from this YouTube video: ${videoUrl}. Format the notes with proper headings, bullet points, and key takeaways.`;
       const result = await model.generateContent(prompt);
       const response = await result.response;
-      setNotes(response.text());
+      const generatedNotes = response.text();
+      setNotes(generatedNotes);
+  
+      // Save to Firestore
+      await addDoc(collection(db, "notes"), {
+        videoUrl: videoUrl,
+        notes: generatedNotes,
+        timestamp: new Date(),
+      });
+
+      // Refresh the notes list
+      await fetchNotes();
+  
     } catch (err) {
-      setError('Failed to generate notes. Please try again.');
+      setError("Failed to generate notes. Please try again.");
       console.error(err);
     } finally {
       setLoading(false);
     }
   };
-
+  
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">
       <div className="card-gradient rounded-xl p-6 mb-8">
@@ -68,10 +102,27 @@ export function NotesPage() {
       </div>
 
       {notes && (
-        <div className="card-gradient rounded-xl p-6">
+        <div className="card-gradient rounded-xl p-6 mb-8">
           <h2 className="text-xl font-semibold mb-4">Generated Notes</h2>
           <div className="prose prose-invert max-w-none">
             <pre className="whitespace-pre-wrap font-sans">{notes}</pre>
+          </div>
+        </div>
+      )}
+
+      {savedNotes.length > 0 && (
+        <div className="card-gradient rounded-xl p-6">
+          <h2 className="text-xl font-semibold mb-4">Previously Generated Notes</h2>
+          <div className="space-y-4">
+            {savedNotes.map((note) => (
+              <div key={note.id} className="p-4 rounded-lg bg-black/30 border border-gray-800">
+                <p className="text-sm text-gray-400 mb-2">
+                  {note.timestamp.toDate().toLocaleString()}
+                </p>
+                <p className="text-sm text-blue-400 mb-2">{note.videoUrl}</p>
+                <pre className="whitespace-pre-wrap font-sans text-sm">{note.notes}</pre>
+              </div>
+            ))}
           </div>
         </div>
       )}

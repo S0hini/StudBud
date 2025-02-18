@@ -1,31 +1,56 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
+import { 
+  getAuth, 
+  GoogleAuthProvider, 
+  User 
+} from 'firebase/auth';
+import { 
+  getFirestore, 
+  doc, 
+  getDoc, 
+  setDoc, 
+  updateDoc, 
+  serverTimestamp,
+  DocumentReference 
+} from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 
 const firebaseConfig = {
-  apiKey: "AIzaSyAsQGCW95L50zMzqC8OkaGJw2r-3JO1gaY",
-  authDomain: "study-af334.firebaseapp.com",
-  projectId: "study-af334",
-  storageBucket: "study-af334.firebasestorage.app",
-  messagingSenderId: "1020259530322",
-  appId: "1:1020259530322:web:85f070a32569746560d18b",
-  measurementId: "G-70KWXFSNJJ"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID,
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
 };
 
+// Initialize Firebase services
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
 export const db = getFirestore(app);
 export const storage = getStorage(app);
 
+// Define user data interface
+interface UserData {
+  displayName: string | null;
+  email: string | null;
+  credits: number;
+  friends: string[];
+  createdAt: any; // FirebaseFirestore.FieldValue
+  lastLogin: any; // FirebaseFirestore.FieldValue
+  totalQuizzesTaken: number;
+  totalCreditsEarned: number;
+}
+
 // Initialize user in Firestore after sign in
-export const initializeUserInFirestore = async (user: any) => {
-  const userRef = doc(db, 'users', user.uid);
+export const initializeUserInFirestore = async (user: User): Promise<void> => {
+  const userRef: DocumentReference = doc(db, 'users', user.uid);
   const userDoc = await getDoc(userRef);
 
   if (!userDoc.exists()) {
-    await setDoc(userRef, {
+    const userData: UserData = {
       displayName: user.displayName,
       email: user.email,
       credits: 100, // Starting credits
@@ -34,7 +59,9 @@ export const initializeUserInFirestore = async (user: any) => {
       lastLogin: serverTimestamp(),
       totalQuizzesTaken: 0,
       totalCreditsEarned: 0
-    });
+    };
+    
+    await setDoc(userRef, userData);
   } else {
     await updateDoc(userRef, {
       lastLogin: serverTimestamp()
