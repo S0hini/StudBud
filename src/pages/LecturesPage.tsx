@@ -15,7 +15,6 @@ export function LecturesPage() {
   const [query, setQuery] = useState('');
   const [suggestions, setSuggestions] = useState<VideoSuggestion[]>([]);
   const [error, setError] = useState('');
-  const [file, setFile] = useState<File | null>(null);
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -33,12 +32,11 @@ export function LecturesPage() {
       // Extract text from image using Gemini API
       const result = await model.generateContent([
         {
-          role: 'user',
-          parts: [{ text: `Extract and summarize the text content from this image: ${downloadURL}` }],
+          text: `Extract and summarize the text content from this image: ${downloadURL}`,
         },
       ]);
-      const response = await result.response;
-      setQuery(response.text());
+      const response = result.response.text();
+      setQuery(response);
     } catch (err) {
       setError('Failed to process the file. Please try again.');
       console.error(err);
@@ -58,9 +56,9 @@ export function LecturesPage() {
 
     try {
       const prompt = `Find 5 relevant educational YouTube videos about: ${query}. For each video, provide the title, URL, and a brief description. Format the response as JSON array with properties: title, url, description.`;
-      const result = await model.generateContent(prompt);
-      const response = await result.response;
-      const videos = JSON.parse(response.text());
+      const result = await model.generateContent([{ text: prompt }]);
+      const response = result.response.text();
+      const videos = JSON.parse(response);
       setSuggestions(videos);
     } catch (err) {
       setError('Failed to find lectures. Please try again.');

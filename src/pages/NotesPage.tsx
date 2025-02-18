@@ -9,7 +9,13 @@ export function NotesPage() {
   const [videoUrl, setVideoUrl] = useState('');
   const [notes, setNotes] = useState('');
   const [error, setError] = useState('');
-  const [savedNotes, setSavedNotes] = useState([]);
+  interface Note {
+    id: string;
+    videoUrl: string;
+    notes: string;
+    timestamp: { toDate: () => Date };
+  }
+  const [savedNotes, setSavedNotes] = useState<Note[]>([]);
 
   useEffect(() => {
     fetchNotes();
@@ -22,7 +28,7 @@ export function NotesPage() {
       const notesData = querySnapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
-      }));
+      })) as Note[];
       setSavedNotes(notesData);
     } catch (err) {
       console.error("Error fetching notes:", err);
