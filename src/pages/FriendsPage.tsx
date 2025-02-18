@@ -11,6 +11,7 @@ interface User {
   email: string;
   credits: number;
   friends: string[];
+  friendRequests: string[];
 }
 
 export function FriendsPage() {
@@ -86,10 +87,38 @@ export function FriendsPage() {
     }
   };
 
+  // New function to approve friend requests.
+  const approveFriendRequest = async (friendId: string) => {
+    if (!currentUserData) return;
+    const userRef = doc(db, 'users', currentUserData.id);
+    try {
+      await updateDoc(userRef, {
+        friendRequests: arrayRemove(friendId),
+        friends: arrayUnion(friendId)
+      });
+      setCurrentUserData(prev => {
+        if (!prev) return null;
+        return {
+          ...prev,
+          friendRequests: prev.friendRequests.filter((id: string) => id !== friendId),
+          friends: [...prev.friends, friendId]
+        };
+      });
+    } catch (err) {
+      console.error('Error approving friend request:', err);
+    }
+  };
+
   const filteredUsers = users.filter(user =>
     user.displayName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
     user.email.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  // Compute friend requests using the users list.
+  const friendRequestUsers =
+    currentUserData && currentUserData.friendRequests
+      ? users.filter(u => currentUserData.friendRequests.includes(u.id))
+      : [];
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-8">
@@ -109,6 +138,26 @@ export function FriendsPage() {
             </div>
           </div>
 
+          {/* New Friend Requests section */}
+          {currentUserData && currentUserData.friendRequests && currentUserData.friendRequests.length > 0 && (
+            <div className="card-gradient rounded-xl p-6 mb-8">
+              <h2 className="text-xl font-bold mb-4">Friend Requests</h2>
+              {friendRequestUsers.map((requester) => (
+                <div key={requester.id} className="flex items-center justify-between mb-2">
+                  <div>
+                    <h3 className="font-semibold">{requester.displayName}</h3>
+                    <p className="text-gray-400 text-sm">{requester.email}</p>
+                  </div>
+                  <button
+                    onClick={() => approveFriendRequest(requester.id)}
+                    className="p-2 rounded-lg bg-green-500/10 text-green-500 hover:bg-green-500/20 transition-colors"
+                  >
+                    Approve
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
 
           {loading ? (
             <div className="text-center py-8">
