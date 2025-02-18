@@ -199,6 +199,11 @@ export function FriendsPage() {
                     <div>
                       <div className="flex items-center gap-2">
                         <h3 className="font-semibold">{userData.displayName}</h3>
+                        {currentUserData?.friends?.includes(userData.id) && (
+                          <span className="text-purple-500 text-xs bg-purple-500/10 px-2 py-0.5 rounded">
+                            Friend
+                          </span>
+                        )}
                         {currentUserData?.friendRequests?.sent?.includes(userData.id) && (
                           <span className="text-yellow-500 text-xs bg-yellow-500/10 px-2 py-0.5 rounded">
                             Pending
