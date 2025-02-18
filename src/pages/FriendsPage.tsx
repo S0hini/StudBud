@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, getDocs, where, doc, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
+import { collection, query, getDocs, where, doc, updateDoc, arrayUnion, arrayRemove, orderBy } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuthStore } from '../lib/store';
 import { Search, UserPlus, UserMinus, Send, MessageCircle } from 'lucide-react';
@@ -27,12 +27,19 @@ export function FriendsPage() {
 
       try {
         const usersRef = collection(db, 'users');
-        const q = query(usersRef, where('email', '!=', user.email));
+        const q = query(
+          usersRef,
+          orderBy('email')
+        );
+        
         const snapshot = await getDocs(q);
-        const userData = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        } as User));
+        const userData = snapshot.docs
+          .map(doc => ({
+            id: doc.id,
+            ...doc.data()
+          } as User))
+          .filter(u => u.email !== user.email);
+        
         setUsers(userData);
 
         // Fetch current user's data
@@ -102,7 +109,6 @@ export function FriendsPage() {
             </div>
           </div>
 
-           Continuing the FriendsPage.tsx content directly from where we left off:
 
           {loading ? (
             <div className="text-center py-8">

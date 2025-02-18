@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Upload, FileText, Loader } from 'lucide-react';
+import  { useState, useEffect } from 'react';
+import {  FileText, Loader } from 'lucide-react';
 import { model } from '../lib/gemini';
 import { db } from '../lib/firebase';
 import { collection, addDoc, getDocs, query, orderBy } from "firebase/firestore";
