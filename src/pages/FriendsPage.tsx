@@ -169,16 +169,6 @@ export function FriendsPage() {
     user.email.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  // Compute friend requests using the users list
-  const friendRequestUsers = {
-    received: currentUserData?.friendRequests?.received 
-      ? users.filter(u => currentUserData.friendRequests.received.includes(u.id))
-      : [],
-    sent: currentUserData?.friendRequests?.sent
-      ? users.filter(u => currentUserData.friendRequests.sent.includes(u.id))
-      : []
-  };
-
   return (
     <div className="max-w-6xl mx-auto px-4 py-8">
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -197,59 +187,6 @@ export function FriendsPage() {
             </div>
           </div>
 
-          {/* Friend Requests section */}
-          {(friendRequestUsers.received.length > 0 || friendRequestUsers.sent.length > 0) && (
-            <div className="card-gradient rounded-xl p-6 mb-8">
-              {friendRequestUsers.received.length > 0 && (
-                <>
-                  <h2 className="text-xl font-bold mb-4">Incoming Friend Requests</h2>
-                  {friendRequestUsers.received.map((requester) => (
-                    <div key={requester.id} className="flex items-center justify-between mb-4">
-                      <div>
-                        <h3 className="font-semibold">{requester.displayName}</h3>
-                        <p className="text-gray-400 text-sm">{requester.email}</p>
-                      </div>
-                      <div className="flex space-x-2">
-                        <button
-                          onClick={() => toggleFriend(requester.id)}
-                          className="px-3 py-1 rounded-lg bg-green-500/10 text-green-500 hover:bg-green-500/20 transition-colors"
-                        >
-                          Accept
-                        </button>
-                        <button
-                          onClick={() => toggleFriend(requester.id)}
-                          className="px-3 py-1 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500/20 transition-colors"
-                        >
-                          Decline
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </>
-              )}
-
-              {friendRequestUsers.sent.length > 0 && (
-                <>
-                  <h2 className="text-xl font-bold mb-4 mt-6">Pending Requests</h2>
-                  {friendRequestUsers.sent.map((recipient) => (
-                    <div key={recipient.id} className="flex items-center justify-between mb-4">
-                      <div>
-                        <h3 className="font-semibold">{recipient.displayName}</h3>
-                        <p className="text-gray-400 text-sm">{recipient.email}</p>
-                      </div>
-                      <button
-                        onClick={() => toggleFriend(recipient.id)}
-                        className="px-3 py-1 rounded-lg bg-gray-500/10 text-gray-400 hover:bg-gray-500/20 transition-colors"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  ))}
-                </>
-              )}
-            </div>
-          )}
-
           {loading ? (
             <div className="text-center py-8">
               <div className="animate-spin w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full mx-auto"></div>
@@ -260,27 +197,57 @@ export function FriendsPage() {
                 <div key={userData.id} className="card-gradient rounded-xl p-6">
                   <div className="flex items-center justify-between">
                     <div>
-                      <h3 className="font-semibold">{userData.displayName}</h3>
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-semibold">{userData.displayName}</h3>
+                        {currentUserData?.friendRequests?.sent?.includes(userData.id) && (
+                          <span className="text-yellow-500 text-xs bg-yellow-500/10 px-2 py-0.5 rounded">
+                            Pending
+                          </span>
+                        )}
+                        {currentUserData?.friendRequests?.received?.includes(userData.id) && (
+                          <span className="text-green-500 text-xs bg-green-500/10 px-2 py-0.5 rounded">
+                            Incoming
+                          </span>
+                        )}
+                      </div>
                       <p className="text-gray-400 text-sm">{userData.email}</p>
                       <p className="text-yellow-500 text-sm mt-1">
                         {userData.credits} credits
                       </p>
                     </div>
                     <div className="flex space-x-2">
-                      <button
-                        onClick={() => toggleFriend(userData.id)}
-                        className="p-2 rounded-lg bg-purple-500/10 text-purple-500 hover:bg-purple-500/20 transition-colors"
-                      >
-                        {currentUserData?.friends?.includes(userData.id) ? (
-                          <UserMinus className="w-5 h-5" />
-                        ) : currentUserData?.friendRequests?.sent?.includes(userData.id) ? (
-                          <span className="text-sm px-2">Cancel Request</span>
-                        ) : currentUserData?.friendRequests?.received?.includes(userData.id) ? (
-                          <span className="text-sm px-2">Accept Request</span>
-                        ) : (
-                          <UserPlus className="w-5 h-5" />
-                        )}
-                      </button>
+                      {currentUserData?.friendRequests?.received?.includes(userData.id) ? (
+                        // Show Accept and Decline buttons for incoming requests
+                        <div className="flex space-x-2">
+                          <button
+                            onClick={() => toggleFriend(userData.id)}
+                            className="px-3 py-1 rounded-lg bg-green-500/10 text-green-500 hover:bg-green-500/20 transition-colors"
+                          >
+                            Accept
+                          </button>
+                          <button
+                            onClick={() => toggleFriend(userData.id)}
+                            className="px-3 py-1 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500/20 transition-colors"
+                          >
+                            Decline
+                          </button>
+                        </div>
+                      ) : (
+                        // Show Add/Remove friend or Cancel Request button
+                        <button
+                          onClick={() => toggleFriend(userData.id)}
+                          className="p-2 rounded-lg bg-purple-500/10 text-purple-500 hover:bg-purple-500/20 transition-colors"
+                        >
+                          {currentUserData?.friends?.includes(userData.id) ? (
+                            <UserMinus className="w-5 h-5" />
+                          ) : currentUserData?.friendRequests?.sent?.includes(userData.id) ? (
+                            <span className="text-sm px-2">Cancel Request</span>
+                          ) : (
+                            <UserPlus className="w-5 h-5" />
+                          )}
+                        </button>
+                      )}
+                      
                       {currentUserData?.friends?.includes(userData.id) && (
                         <>
                           <button
@@ -305,6 +272,7 @@ export function FriendsPage() {
           )}
         </div>
 
+        {/* Chat section */}
         <div>
           {selectedFriend ? (
             currentUserData?.friends?.includes(selectedFriend.id) ? (
