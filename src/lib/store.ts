@@ -5,7 +5,7 @@ import {
   signOut as firebaseSignOut,
   onAuthStateChanged
 } from 'firebase/auth';
-import { doc, setDoc, getDoc } from 'firebase/firestore';
+import { doc, setDoc, getDoc, updateDoc } from 'firebase/firestore';
 import { auth, db } from './firebase';
 
 interface AuthState {
@@ -61,6 +61,13 @@ export const useAuthStore = create<AuthState>((set) => ({
       };
 
       await setDoc(userRef, userData, { merge: true });
+
+      // When creating/updating user profile
+      await updateDoc(userRef, {
+        photoURL: user.photoURL, // From Google Auth
+        // ...other user data
+      });
+
       set({ user: { ...user, photoURL } });
     } catch (error) {
       console.error('Error during sign in:', error);

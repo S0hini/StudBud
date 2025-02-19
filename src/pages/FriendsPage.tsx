@@ -23,6 +23,7 @@ interface User {
   displayName: string;
   email: string;
   credits: number;
+  photoURL: string; // Add this line
   friends: string[];
   friendRequests: {
     sent: string[];
@@ -80,7 +81,8 @@ export function FriendsPage() {
         const userData = snapshot.docs
           .map(doc => ({
             id: doc.id,
-            ...doc.data()
+            ...doc.data(),
+            photoURL: doc.data().photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(doc.data().displayName)}&background=random` // Fallback avatar
           } as User))
           .filter(u => u.email !== user.email);
         
@@ -196,29 +198,40 @@ export function FriendsPage() {
               {filteredUsers.map((userData) => (
                 <div key={userData.id} className="card-gradient rounded-xl p-6">
                   <div className="flex items-center justify-between">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <h3 className="font-semibold">{userData.displayName}</h3>
-                        {currentUserData?.friends?.includes(userData.id) && (
-                          <span className="text-purple-500 text-xs bg-purple-500/10 px-2 py-0.5 rounded">
-                            Friend
-                          </span>
-                        )}
-                        {currentUserData?.friendRequests?.sent?.includes(userData.id) && (
-                          <span className="text-yellow-500 text-xs bg-yellow-500/10 px-2 py-0.5 rounded">
-                            Pending
-                          </span>
-                        )}
-                        {currentUserData?.friendRequests?.received?.includes(userData.id) && (
-                          <span className="text-green-500 text-xs bg-green-500/10 px-2 py-0.5 rounded">
-                            Incoming
-                          </span>
-                        )}
+                    <div className="flex items-center gap-4">
+                      <img
+                        src={userData.photoURL}
+                        alt={userData.displayName}
+                        className="w-12 h-12 rounded-full object-cover border-2 border-purple-500/30"
+                        onError={(e) => {
+                          const target = e.target as HTMLImageElement;
+                          target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(userData.displayName)}&background=random`;
+                        }}
+                      />
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h3 className="font-semibold">{userData.displayName}</h3>
+                          {currentUserData?.friends?.includes(userData.id) && (
+                            <span className="text-purple-500 text-xs bg-purple-500/10 px-2 py-0.5 rounded">
+                              Friend
+                            </span>
+                          )}
+                          {currentUserData?.friendRequests?.sent?.includes(userData.id) && (
+                            <span className="text-yellow-500 text-xs bg-yellow-500/10 px-2 py-0.5 rounded">
+                              Pending
+                            </span>
+                          )}
+                          {currentUserData?.friendRequests?.received?.includes(userData.id) && (
+                            <span className="text-green-500 text-xs bg-green-500/10 px-2 py-0.5 rounded">
+                              Incoming
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-gray-400 text-sm">{userData.email}</p>
+                        <p className="text-yellow-500 text-sm mt-1">
+                          {userData.credits} credits
+                        </p>
                       </div>
-                      <p className="text-gray-400 text-sm">{userData.email}</p>
-                      <p className="text-yellow-500 text-sm mt-1">
-                        {userData.credits} credits
-                      </p>
                     </div>
                     <div className="flex space-x-2">
                       {currentUserData?.friendRequests?.received?.includes(userData.id) ? (
