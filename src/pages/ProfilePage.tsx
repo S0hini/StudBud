@@ -12,6 +12,7 @@ interface UserProfile {
   totalCreditsEarned: number;
   createdAt: any;
   lastLogin: any;
+  photoURL: string;
 }
 
 export function ProfilePage() {
@@ -20,18 +21,30 @@ export function ProfilePage() {
   const [loading, setLoading] = useState(true);
   const [editMode, setEditMode] = useState(false);
   const [displayName, setDisplayName] = useState('');
+  const [imageError, setImageError] = useState(false);
 
   useEffect(() => {
     const fetchProfile = async () => {
-      if (!user) return;
+      if (!user) {
+        console.log("No user found");
+        return;
+      }
+
+      console.log("Fetching profile for user:", user.uid);
 
       try {
         const userRef = doc(db, 'users', user.uid);
         const userDoc = await getDoc(userRef);
         
         if (userDoc.exists()) {
-          setProfile(userDoc.data() as UserProfile);
-          setDisplayName(userDoc.data().displayName);
+          const userData = userDoc.data();
+          console.log('Fetched user data:', userData);
+          console.log('Photo URL from Firestore:', userData.photoURL);
+          setProfile(userData as UserProfile);
+          setDisplayName(userData.displayName);
+          setImageError(false); // Reset error state
+        } else {
+          console.log("No user document found");
         }
       } catch (err) {
         console.error('Error fetching profile:', err);
@@ -42,6 +55,16 @@ export function ProfilePage() {
 
     fetchProfile();
   }, [user]);
+
+  useEffect(() => {
+    if (profile) {
+      console.log('Profile updated:', profile);
+      console.log('Photo URL:', profile.photoURL);
+    }
+  }, [profile]);
+
+  console.log('Current profile:', profile);
+  console.log('Google user:', user);
 
   const updateProfile = async () => {
     if (!user) return;
@@ -56,6 +79,10 @@ export function ProfilePage() {
     } catch (err) {
       console.error('Error updating profile:', err);
     }
+  };
+
+  const getFallbackImage = (displayName: string) => {
+    return `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=8B5CF6&color=fff&size=128`;
   };
 
   if (loading) {
@@ -80,8 +107,23 @@ export function ProfilePage() {
       <div className="card-gradient rounded-xl p-6 mb-8">
         <div className="flex items-start justify-between mb-6">
           <div className="flex items-center space-x-4">
-            <div className="w-16 h-16 rounded-full bg-purple-500/20 flex items-center justify-center">
-              <User className="w-8 h-8 text-purple-500" />
+            <div className="w-16 h-16 rounded-full overflow-hidden">
+              {profile && (
+                imageError ? (
+                  <img 
+                    src={getFallbackImage(profile.displayName)}
+                    alt={profile.displayName}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <img 
+                    src={profile.photoURL || getFallbackImage(profile.displayName)}
+                    alt={profile.displayName}
+                    className="w-full h-full object-cover"
+                    onError={() => setImageError(true)}
+                  />
+                )
+              )}
             </div>
             <div>
               {editMode ? (
@@ -117,6 +159,7 @@ export function ProfilePage() {
                 </div>
               )}
               <p className="text-gray-400">{profile.email}</p>
+              <p className="text-sm text-gray-400 mt-1">Profile picture synced with Google account</p>
             </div>
           </div>
         </div>

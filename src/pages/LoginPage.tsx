@@ -6,23 +6,14 @@ import { useAuthStore } from '../lib/store';
 
 export function LoginPage() {
   const navigate = useNavigate();
-  const { setUser, setIsAdmin } = useAuthStore();
+  const { signIn } = useAuthStore();
   const [error, setError] = React.useState<string | null>(null);
 
   const handleGoogleSignIn = async () => {
     try {
-      const result = await signInWithPopup(auth, googleProvider);
-      const isAdmin = ['tb123983@gmail.com', 'sohakt3@gmail.com'].includes(result.user.email || '');
-      
-      // Initialize user in Firestore
-      await initializeUserInFirestore(result.user);
-      
-      setUser(result.user);
-      setIsAdmin(isAdmin);
-      navigate('/');
-    } catch (err) {
-      setError('Failed to sign in. Please try again.');
-      console.error(err);
+      await signIn();
+    } catch (error) {
+      console.error('Login error:', error);
     }
   };
 

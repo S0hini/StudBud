@@ -1,8 +1,30 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /{document=**} {
-      allow read, write: if true;  // For development only
+    match /users/{userId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null && request.auth.uid == userId;
+      allow update: if request.auth != null && request.auth.uid == userId;
+
+      // Validate user document structure
+      function isValidUser() {
+        let user = request.resource.data;
+        return user.displayName is string
+          && user.email is string
+          && (user.photoURL is string || user.photoURL == null)
+          && user.credits is number
+          && (user.friends is list || user.friends == null)
+          && (('friendRequests' in user && user.friendRequests.sent is list && user.friendRequests.received is list) 
+              || !('friendRequests' in user));
+      }
+    }
+
+    match /chats/{chatId} {
+      allow read, write: if request.auth != null;
+    }
+
+    match /messages/{messageId} {
+      allow read, write: if request.auth != null;
     }
   }
 }
