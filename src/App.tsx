@@ -16,20 +16,12 @@ import { CreditsPage } from './pages/CreditsPage';
 import { TutorPage } from './pages/TutorPage';
 import { ProfilePage } from './pages/ProfilePage';
 
-function App() {
-  const { setUser, setIsAdmin, user } = useAuthStore();
+export function App() {
+  const { user, loading } = useAuthStore();
 
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setUser(user);
-      if (user) {
-        const isAdmin = ['tb123983@gmail.com', 'sohakt3@gmail.com'].includes(user.email || '');
-        setIsAdmin(isAdmin);
-      }
-    });
-
-    return () => unsubscribe();
-  }, [setUser, setIsAdmin]);
+  if (loading) {
+    return <div>Loading...</div>;
+  }
 
   const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
     if (!user) {
