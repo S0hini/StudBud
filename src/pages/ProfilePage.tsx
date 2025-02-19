@@ -42,7 +42,7 @@ export function ProfilePage() {
           console.log('Photo URL from Firestore:', userData.photoURL);
           setProfile(userData as UserProfile);
           setDisplayName(userData.displayName);
-          setImageError(false); // Reset error state
+          setImageError(false);
         } else {
           console.log("No user document found");
         }
@@ -81,10 +81,6 @@ export function ProfilePage() {
     }
   };
 
-  const getFallbackImage = (displayName: string) => {
-    return `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=8B5CF6&color=fff&size=128`;
-  };
-
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -108,21 +104,24 @@ export function ProfilePage() {
         <div className="flex items-start justify-between mb-6">
           <div className="flex items-center space-x-4">
             <div className="w-16 h-16 rounded-full overflow-hidden">
-              {profile && (
-                imageError ? (
-                  <img 
-                    src={getFallbackImage(profile.displayName)}
-                    alt={profile.displayName}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <img 
-                    src={profile.photoURL || getFallbackImage(profile.displayName)}
-                    alt={profile.displayName}
-                    className="w-full h-full object-cover"
-                    onError={() => setImageError(true)}
-                  />
-                )
+              {!imageError && profile.photoURL ? (
+                <img 
+                  src={profile.photoURL}
+                  alt={profile.displayName}
+                  className="w-full h-full object-cover"
+                  onError={(e) => {
+                    console.log('Image load error:', e);
+                    setImageError(true);
+                  }}
+                  referrerPolicy="no-referrer"
+                  crossOrigin="anonymous"
+                />
+              ) : (
+                <div className="w-full h-full bg-purple-500/20 flex items-center justify-center">
+                  <span className="text-xl font-bold text-purple-500">
+                    {profile.displayName?.charAt(0).toUpperCase()}
+                  </span>
+                </div>
               )}
             </div>
             <div>
