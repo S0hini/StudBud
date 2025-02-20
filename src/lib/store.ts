@@ -1,25 +1,41 @@
-import { create } from 'zustand';
+import create from 'zustand';
 import { 
   signInWithPopup, 
   GoogleAuthProvider, 
   signOut as firebaseSignOut,
-  onAuthStateChanged
+  onAuthStateChanged,
+  User
 } from 'firebase/auth';
-import { doc, setDoc, getDoc, updateDoc } from 'firebase/firestore';
+import { doc, setDoc, getDoc, updateDoc, onSnapshot } from 'firebase/firestore';
 import { auth, db } from './firebase';
 
 interface AuthState {
-  user: any | null;
+  user: User | null;
+  credits: number;
   loading: boolean;
   signIn: () => Promise<void>;
   signOut: () => Promise<void>;
-  setUser: (user: any) => void;
+  setUser: (user: User | null) => void;
+  setCredits: (credits: number) => void;
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
   user: null,
+  credits: 0,
   loading: true,
-  setUser: (user) => set({ user, loading: false }),
+  setUser: (user) => {
+    set({ user, loading: false });
+    if (user) {
+      // Subscribe to user's credits in Firestore
+      const unsubscribe = onSnapshot(doc(db, 'users', user.uid), (doc) => {
+        if (doc.exists()) {
+          set({ credits: doc.data().credits || 0 });
+        }
+      });
+      return () => unsubscribe();
+    }
+  },
+  setCredits: (credits) => set({ credits }),
 
   signIn: async () => {
     try {
