@@ -74,6 +74,7 @@ export const useAuthStore = create<AuthState>((set) => ({
         friendRequests: userDoc.exists() ? userDoc.data().friendRequests : { sent: [], received: [] },
         lastLogin: new Date(),
         createdAt: userDoc.exists() ? userDoc.data().createdAt : new Date(),
+        bio: userDoc.exists() ? userDoc.data().bio : '',
       };
 
       await setDoc(userRef, userData, { merge: true });
