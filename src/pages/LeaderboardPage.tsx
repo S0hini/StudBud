@@ -35,12 +35,18 @@ export function LeaderboardPage() {
         allUsersData.sort((a, b) => (b.credits || 0) - (a.credits || 0));
         setAllUsers(allUsersData);
 
-        // Fetch current user's friends
+        // Fetch current user's friends and include current user
         const currentUserQuery = query(usersRef, where('email', '==', user.email));
         const currentUserSnapshot = await getDocs(currentUserQuery);
         if (!currentUserSnapshot.empty) {
-          const friendIds = currentUserSnapshot.docs[0].data().friends || [];
-          const friendsData = allUsersData.filter(user => friendIds.includes(user.id));
+          const currentUserData = currentUserSnapshot.docs[0].data();
+          const friendIds = currentUserData.friends || [];
+          const currentUserId = currentUserSnapshot.docs[0].id;
+          
+          // Get friends data and include current user
+          const friendsData = allUsersData.filter(user => 
+            friendIds.includes(user.id) || user.id === currentUserId
+          );
           friendsData.sort((a, b) => (b.credits || 0) - (a.credits || 0));
           setFriends(friendsData);
         }
@@ -54,35 +60,77 @@ export function LeaderboardPage() {
     fetchUsers();
   }, [user]);
 
-  const LeaderboardSection = ({ title, icon: Icon, users }: { title: string, icon: any, users: User[] }) => (
-    <div className="card-gradient rounded-xl p-6">
-      <div className="flex items-center space-x-3 mb-6">
-        <Icon className="w-6 h-6 text-purple-500" />
-        <h2 className="text-xl font-bold">{title}</h2>
+  const getTrophyColor = (position: number) => {
+    switch (position) {
+      case 0: // First place
+        return "text-yellow-500"; // Gold
+      case 1: // Second place
+        return "text-gray-400"; // Silver
+      case 2: // Third place
+        return "text-amber-700"; // Bronze
+      default:
+        return "text-gray-600"; // Default color
+    }
+  };
+
+  const LeaderboardSection = ({ title, icon: Icon, users }: { title: string, icon: any, users: User[] }) => {
+    const currentUserEmail = user?.email;
+    
+    return (
+      <div className="card-gradient rounded-xl p-6">
+        <div className="flex items-center space-x-3 mb-6">
+          <Icon className="w-6 h-6 text-purple-500" />
+          <h2 className="text-xl font-bold">{title}</h2>
+        </div>
+        
+        <div className="space-y-4">
+          {users.map((userData, index) => {
+            const isCurrentUser = userData.email === currentUserEmail;
+            
+            return (
+              <div
+                key={userData.id}
+                className={`flex items-center p-4 rounded-lg ${
+                  isCurrentUser 
+                    ? 'bg-purple-500/20 border border-purple-500/50' 
+                    : 'bg-black/30 border border-gray-800'
+                }`}
+              >
+                <div className="flex-shrink-0 w-8 text-center font-bold">
+                  {index + 1}
+                </div>
+                <div className="ml-4 flex-grow">
+                  <h3 className={`font-semibold ${isCurrentUser ? 'text-purple-200' : ''}`}>
+                    {userData.displayName}
+                    {isCurrentUser && " (You)"}
+                  </h3>
+                  <p className="text-gray-400 text-sm">{userData.email}</p>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Trophy 
+                    className={`w-4 h-4 ${getTrophyColor(index)}`}
+                  />
+                  <span className={`font-bold ${
+                    isCurrentUser ? 'text-purple-200' : ''
+                  }`}>
+                    {userData.credits || 0}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+          
+          {users.length === 0 && (
+            <div className="text-center text-gray-400 py-4">
+              {title === "Friends Leaderboard" 
+                ? "No friends added yet" 
+                : "No users found"}
+            </div>
+          )}
+        </div>
       </div>
-      
-      <div className="space-y-4">
-        {users.map((userData, index) => (
-          <div
-            key={userData.id}
-            className="flex items-center p-4 rounded-lg bg-black/30 border border-gray-800"
-          >
-            <div className="flex-shrink-0 w-8 text-center font-bold">
-              {index + 1}
-            </div>
-            <div className="ml-4 flex-grow">
-              <h3 className="font-semibold">{userData.displayName}</h3>
-              <p className="text-gray-400 text-sm">{userData.email}</p>
-            </div>
-            <div className="flex items-center space-x-2">
-              <Trophy className="w-4 h-4 text-yellow-500" />
-              <span className="font-bold">{userData.credits || 0}</span>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
+    );
+  };
 
   if (loading) {
     return (
