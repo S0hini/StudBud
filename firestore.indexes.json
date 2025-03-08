@@ -16,7 +16,16 @@
           { "fieldPath": "userId", "order": "ASCENDING" },
           { "fieldPath": "timestamp", "order": "ASCENDING" }
         ]
-      }
+      },
+      {
+        "collectionGroup": "quizzes",
+        "queryScope": "COLLECTION",
+        "fields": [
+          { "fieldPath": "course", "order": "ASCENDING" },
+          { "fieldPath": "level", "order": "ASCENDING" },
+          { "fieldPath": "timestamp", "order": "DESCENDING" }
+          ]
+        }
     ]
   }
 }
