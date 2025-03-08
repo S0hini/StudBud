@@ -8,22 +8,7 @@ export function CreditsPage() {
   const { user, credits, setCredits } = useAuthStore();
   const [loading, setLoading] = useState(false);
 
-  const earnCredits = async (amount: number) => {
-    if (!user) return;
 
-    setLoading(true);
-    try {
-      const userRef = doc(db, 'users', user.uid);
-      await updateDoc(userRef, {
-        credits: increment(amount)
-      });
-      setCredits(credits + amount);
-    } catch (err) {
-      console.error('Error updating credits:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const activities = [
     {
@@ -78,7 +63,12 @@ export function CreditsPage() {
                 <span className="text-yellow-500 font-medium">{activity.credits}</span>
               </div>
               <button
-                onClick={() => earnCredits(10)}
+                onClick={() => {
+                  // Redirect to Quiz Page
+                  window.location.href = '/quiz';
+                }}
+
+
                 disabled={loading}
                 className="px-4 py-2 rounded-lg bg-purple-500/10 text-purple-500 hover:bg-purple-500/20 transition-colors text-sm font-medium"
               >
