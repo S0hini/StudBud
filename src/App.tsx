@@ -15,6 +15,8 @@ import { LeaderboardPage } from './pages/LeaderboardPage';
 import { CreditsPage } from './pages/CreditsPage';
 import { TutorPage } from './pages/TutorPage';
 import { ProfilePage } from './pages/ProfilePage';
+import QuizPage from './pages/QuizPage'; // Import the new QuizPage
+
 
 export function App() {
   const { user, loading } = useAuthStore();
@@ -71,7 +73,13 @@ export function App() {
                   <CreditsPage />
                 </ProtectedRoute>
               } />
+              <Route path="/quiz" element={
+                <ProtectedRoute>
+                  <QuizPage />
+                </ProtectedRoute>
+              } />
               <Route path="/profile" element={
+
                 <ProtectedRoute>
                   <ProfilePage />
                 </ProtectedRoute>
