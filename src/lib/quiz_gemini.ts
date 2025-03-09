@@ -1,9 +1,9 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
-const apiKey = import.meta.env.VITE_PUBLIC_GEMINI_API_KEY;
+const apiKey = import.meta.env.VITE_QUIZ_GEMINI_API_KEY;
 
 if (!apiKey) {
-  throw new Error("VITE_PUBLIC_GEMINI_API_KEY is not defined in environment variables");
+  throw new Error("VITE_QUIZ_GEMINI_API_KEY is not defined in environment variables");
 }
 
 const genAI = new GoogleGenerativeAI(apiKey);

@@ -5,30 +5,31 @@ import { db } from '../lib/firebase';
 import { useAuthStore } from '../lib/store';
 import { collection, addDoc, query, where, orderBy, onSnapshot, serverTimestamp } from 'firebase/firestore';
 
-// Initialize Gemini with safety checks and logging
+// Safety check for API key
 const apiKey = import.meta.env.VITE_PUBLIC_GEMINI_API_KEY;
 if (!apiKey) {
   console.error('Missing Gemini API key');
   throw new Error('VITE_PUBLIC_GEMINI_API_KEY is not defined');
 }
 
-console.log('Initializing Gemini...'); // Debug log
+// Initialize the API with the correct model name and version
 const genAI = new GoogleGenerativeAI(apiKey);
+// Use gemini-1.5-pro or gemini-1.5-flash instead of gemini-pro
 const model = genAI.getGenerativeModel({ 
-  model: "gemini-pro",
+  model: "gemini-1.5-pro",  // Updated to use the current model name
   generationConfig: {
-    maxOutputTokens: 2048,
     temperature: 0.7,
+    topK: 40,
+    topP: 0.95,
+    maxOutputTokens: 2048,
   },
 });
 
-console.log('API Key exists:', !!apiKey); // Will log true/false, not the actual key
-
 interface Message {
-  id: string;
-  content: string;
   role: 'user' | 'assistant';
+  content: string;
   timestamp: any;
+  id?: string;  // Added id to the interface
 }
 
 // Add this helper function to convert asterisks to bold text
@@ -48,12 +49,11 @@ export function TutorPage() {
     if (!user) return;
 
     try {
-      // Updated query to match the index
+      // Query the firestore collection
       const q = query(
         collection(db, 'tutorChats'),
         where('userId', '==', user.uid),
-        orderBy('timestamp', 'asc'),
-        orderBy('__name__', 'asc')  // Add this line
+        orderBy('timestamp', 'asc')
       );
 
       const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -91,9 +91,7 @@ export function TutorPage() {
     setIsThinking(true);
 
     try {
-      console.log('Starting message send...');
-
-      // Save user message to Firestore
+      // Save user message first
       await addDoc(collection(db, 'tutorChats'), {
         userId: user.uid,
         content: userMessage,
@@ -101,21 +99,33 @@ export function TutorPage() {
         timestamp: serverTimestamp()
       });
 
-      // Create a structured prompt for topic explanation with bold formatting
-      const structuredPrompt = `
-Please explain the topic: "${userMessage}"
+      try {
+        // Format chat history correctly
+        const chatHistory = messages.map(msg => ({
+          role: msg.role === 'assistant' ? 'model' : 'user',
+          parts: [{ text: msg.content }]
+        }));
+
+        const chat = model.startChat({
+          history: chatHistory,
+          generationConfig: {
+            temperature: 0.7,
+            topK: 40,
+            topP: 0.95,
+            maxOutputTokens: 2048,
+          }
+        });
+
+        // Create the formatted template with the user's message
+        const templatePrompt = `Please explain the topic: "${userMessage}"
 Use bold text with markdown formatting (e.g., **word**) for important terms.
-
 Provide a comprehensive explanation in the following format:
-
 📌 **BRIEF OVERVIEW:**
 [Provide a 2-3 sentence introduction to the topic, using **bold** for key terms]
-
 🎯 **KEY CONCEPTS:**
 • **[Key term 1]**: [Definition]
 • **[Key term 2]**: [Definition]
 • **[Key term 3]**: [Definition]
-
 📝 **DETAILED EXPLANATION:**
 • **[Main concept 1]**
   - [Detailed explanation with **bold** key terms]
@@ -123,23 +133,21 @@ Provide a comprehensive explanation in the following format:
 • **[Main concept 2]**
   - [Detailed explanation with **bold** key terms]
   - [Supporting details]
-
 💡 **EXAMPLES:**
 • **Example 1**: [Practical application]
 • **Example 2**: [Practical application]
-
 ✨ **SUMMARY:**
 [Brief summary highlighting **key terms** and main points]
+Remember to use **bold** formatting (with double asterisks) for important terms and concepts throughout the explanation.`;
 
-Remember to use **bold** formatting (with double asterisks) for important terms and concepts throughout the explanation.
-`;
-
-      try {
-        console.log('Calling Gemini API...');
-        const result = await model.generateContent(structuredPrompt);
-        const response = await result.response;
-        const aiMessage = response.text();
-        console.log('AI Message received');
+        // Send the template prompt instead of just the user message
+        const result = await chat.sendMessage([
+          {
+            text: templatePrompt
+          }
+        ]);
+        
+        const aiMessage = await result.response.text();
 
         // Save AI response
         await addDoc(collection(db, 'tutorChats'), {
@@ -148,17 +156,16 @@ Remember to use **bold** formatting (with double asterisks) for important terms 
           role: 'assistant',
           timestamp: serverTimestamp()
         });
-        console.log('AI response saved to Firestore');
-      } catch (geminiError) {
-        console.error('Gemini API Error:', geminiError);
-        throw geminiError;
+
+      } catch (error) {
+        console.error('Gemini API Error:', error);
+        throw error;
       }
     } catch (err) {
       console.error('Overall Error:', err);
-      // Add error message to chat
       await addDoc(collection(db, 'tutorChats'), {
         userId: user.uid,
-        content: "Sorry, I encountered an error while explaining this topic. Please try again.",
+        content: "Sorry, I encountered an error. Please try again.",
         role: 'assistant',
         timestamp: serverTimestamp()
       });
@@ -232,9 +239,18 @@ Remember to use **bold** formatting (with double asterisks) for important terms 
                 </div>
                 <div className="rounded-lg p-3 bg-black/30 border border-gray-800">
                   <div className="flex space-x-2">
-                    <div className="w-2 h-2 bg-purple-500 rounded-full animate-bounce" style={{ animationDelay: '0s' }}></div>
-                    <div className="w-2 h-2 bg-purple-500 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
-                    <div className="w-2 h-2 bg-purple-500 rounded-full animate-bounce" style={{ animationDelay: '0.4s' }}></div>
+                    {[0, 0.2, 0.4].map((delay, index) => (
+                      <div
+                        key={index}
+                        className="w-2 h-2 bg-purple-500 rounded-full"
+                        style={{
+                          animationName: 'bounce',
+                          animationDuration: '1s',
+                          animationIterationCount: 'infinite',
+                          animationDelay: `${delay}s`
+                        }}
+                      ></div>
+                    ))}
                   </div>
                 </div>
               </div>
