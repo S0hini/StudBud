@@ -153,7 +153,7 @@ function QuizPage() {
         className="max-w-4xl mx-auto px-6 py-12"
       >
         <motion.h1 
-          className="text-4xl font-bold mb-8 text-center bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-green-400"
+          className="text-4xl font-bold mb-8 text-center bg-clip-text text-transparent bg-gradient-to-r from-[#B3D8A8] to-[#82A878]"
           initial={{ scale: 0.8 }}
           animate={{ scale: 1 }}
           transition={{ 
@@ -166,7 +166,7 @@ function QuizPage() {
         </motion.h1>
 
         <motion.div 
-          className="space-y-4 bg-black/40 backdrop-blur-lg p-8 rounded-2xl border border-blue-500/30 shadow-lg shadow-blue-500/10"
+          className="space-y-4 bg-[#B3D8A8]/10 backdrop-blur-lg p-8 rounded-2xl border border-[#B3D8A8]/30 shadow-lg shadow-[#B3D8A8]/10"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.2, duration: 0.5 }}
@@ -184,7 +184,7 @@ function QuizPage() {
                 placeholder="Enter Course Name"
                 value={course}
                 onChange={(e) => setCourse(e.target.value)}
-                className="w-full pl-10 px-4 py-3 rounded-xl bg-gray-800/80 border border-gray-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/40 focus:outline-none transition-all duration-300"
+                className="w-full pl-10 px-4 py-3 rounded-xl bg-[#B3D8A8]/5 border border-[#B3D8A8]/30 focus:border-[#82A878] focus:ring-2 focus:ring-[#B3D8A8]/40 focus:outline-none transition-all duration-300"
               />
             </motion.div>
             
@@ -200,7 +200,7 @@ function QuizPage() {
                 placeholder="Enter Topic"
                 value={topic}
                 onChange={(e) => setTopic(e.target.value)}
-                className="w-full pl-10 px-4 py-3 rounded-xl bg-gray-800/80 border border-gray-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/40 focus:outline-none transition-all duration-300"
+                className="w-full pl-10 px-4 py-3 rounded-xl bg-[#B3D8A8]/5 border border-[#B3D8A8]/30 focus:border-[#82A878] focus:ring-2 focus:ring-[#B3D8A8]/40 focus:outline-none transition-all duration-300"
               />
             </motion.div>
             
@@ -208,7 +208,7 @@ function QuizPage() {
               <select
                 value={level}
                 onChange={(e) => setLevel(e.target.value)}
-                className="w-full px-4 py-3 rounded-xl bg-gray-800/80 border border-gray-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/40 focus:outline-none transition-all duration-300"
+                className="w-full px-4 py-3 rounded-xl bg-[#B3D8A8]/5 border border-[#B3D8A8]/30 focus:border-[#82A878] focus:ring-2 focus:ring-[#B3D8A8]/40 focus:outline-none transition-all duration-300"
               >
                 <option value="">Select Difficulty Level</option>
                 <option value="Placement">Placement</option>
@@ -221,7 +221,7 @@ function QuizPage() {
           <motion.button
             onClick={startQuiz}
             disabled={loading}
-            className="w-full mt-4 px-6 py-3 rounded-xl bg-gradient-to-r from-blue-600 to-green-600 text-white font-medium hover:from-blue-700 hover:to-green-700 focus:ring-4 focus:ring-blue-500/50 transition-all duration-300 transform"
+            className="w-full mt-4 px-6 py-3 rounded-xl bg-gradient-to-r from-[#B3D8A8] to-[#82A878] text-black font-medium hover:from-[#B3D8A8]/90 hover:to-[#82A878]/90 focus:ring-4 focus:ring-[#B3D8A8]/50 transition-all duration-300 transform"
             whileHover={{ scale: 1.03 }}
             whileTap={{ scale: 0.98 }}
           >
@@ -251,7 +251,7 @@ function QuizPage() {
                 >
                   <div className="relative w-32 h-32">
                     <motion.div 
-                      className="absolute inset-0 rounded-full bg-blue-500/30"
+                      className="absolute inset-0 rounded-full bg-[#B3D8A8]/30"
                       animate={{ 
                         scale: [1, 1.5, 1],
                         opacity: [0.3, 0.1, 0.3],
@@ -262,7 +262,7 @@ function QuizPage() {
                       }}
                     />
                     <motion.div 
-                      className="absolute inset-0 rounded-full bg-green-500/20"
+                      className="absolute inset-0 rounded-full bg-[#82A878]/20"
                       animate={{ 
                         scale: [1, 1.8, 1],
                         opacity: [0.2, 0.1, 0.2],
@@ -308,9 +308,9 @@ function QuizPage() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5 }}
             >
-              <div className="flex flex-col md:flex-row justify-between items-center bg-black/30 backdrop-blur-md p-4 rounded-xl border border-blue-500/20">
+              <div className="flex flex-col md:flex-row justify-between items-center bg-[#FFF5E4]/5 backdrop-blur-md p-4 rounded-xl border border-[#6A9C89]/20">
                 <h2 className="text-xl font-semibold">
-                  <span className="text-blue-400">{course}:</span> {topic} <span className="text-green-400">({level})</span>
+                  <span className="text-[#FFA725]">{course}:</span> {topic} <span className="text-[#6A9C89]">({level})</span>
                 </h2>
                 
                 {/* Score display */}
@@ -339,7 +339,7 @@ function QuizPage() {
                 {quizData.map((q, index) => (
                   <motion.div 
                     key={index}
-                    className="p-6 rounded-xl bg-gray-900/80 backdrop-blur-md border border-gray-700/50 shadow-lg hover:shadow-blue-500/10 transition-all duration-300"
+                    className="p-6 rounded-xl bg-[#B3D8A8]/5 backdrop-blur-md border border-[#B3D8A8]/30 shadow-lg hover:shadow-[#B3D8A8]/10 transition-all duration-300"
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ 
                       opacity: 1, 
@@ -350,9 +350,9 @@ function QuizPage() {
                   >
                     <h2 className="text-lg font-semibold flex">
                       <motion.span 
-                        className="flex items-center justify-center w-8 h-8 mr-3 rounded-full bg-blue-500/20 text-blue-300 font-bold"
+                        className="flex items-center justify-center w-8 h-8 mr-3 rounded-full bg-[#FFA725]/20 text-[#FFA725] font-bold"
                         animate={{ 
-                          boxShadow: ["0 0 0px rgba(59, 130, 246, 0.5)", "0 0 10px rgba(59, 130, 246, 0.8)", "0 0 0px rgba(59, 130, 246, 0.5)"]
+                          boxShadow: ["0 0 0px rgba(147, 51, 234, 0.5)", "0 0 10px rgba(147, 51, 234, 0.8)", "0 0 0px rgba(147, 51, 234, 0.5)"]
                         }}
                         transition={{ 
                           repeat: Infinity, 
@@ -375,11 +375,11 @@ function QuizPage() {
                             className={`w-full px-4 py-3 rounded-xl text-left border transition-all duration-300 ${
                               selectedAnswers[index] === option
                                 ? option === q.answer
-                                  ? "border-green-500 bg-green-900/30 shadow-md shadow-green-500/20"
+                                  ? "border-[#B3D8A8] bg-[#B3D8A8]/20 shadow-md shadow-[#B3D8A8]/20"
                                   : "border-red-500 bg-red-900/30 shadow-md shadow-red-500/20"
                                 : answeredQuestions[index]
-                                  ? "border-gray-700 opacity-70"
-                                  : "border-gray-700 hover:border-blue-500 hover:bg-blue-900/10"
+                                  ? "border-[#B3D8A8]/30 opacity-70"
+                                  : "border-[#B3D8A8]/30 hover:border-[#82A878] hover:bg-[#B3D8A8]/10"
                             }`}
                             whileHover={!answeredQuestions[index] ? { scale: 1.02 } : {}}
                             whileTap={!answeredQuestions[index] ? { scale: 0.98 } : {}}
@@ -447,7 +447,7 @@ function QuizPage() {
                             {/* Explanation toggle button */}
                             <motion.button 
                               onClick={() => toggleExplanation(index)}
-                              className="ml-4 px-4 py-1 bg-blue-600/80 hover:bg-blue-700 rounded-lg text-xs flex items-center"
+                              className="ml-4 px-4 py-1 bg-[#6A9C89] hover:bg-[#6A9C89]/80 rounded-lg text-xs flex items-center"
                               whileHover={{ scale: 1.05 }}
                               whileTap={{ scale: 0.95 }}
                             >
@@ -464,7 +464,7 @@ function QuizPage() {
                           <AnimatePresence>
                             {showExplanations[index] && (
                               <motion.div 
-                                className="mt-3 p-4 bg-blue-900/20 rounded-xl border-l-4 border-blue-500"
+                                className="mt-3 p-4 bg-[#FFF5E4]/5 rounded-xl border-l-4 border-[#FFA725]"
                                 initial={{ opacity: 0, y: -10 }}
                                 animate={{ opacity: 1, y: 0 }}
                                 exit={{ opacity: 0, y: -10 }}
@@ -490,7 +490,7 @@ function QuizPage() {
               >
                 <motion.button
                   onClick={resetQuiz}
-                  className="flex-1 px-4 py-3 rounded-xl bg-yellow-600 text-white font-medium hover:bg-yellow-700 transition-colors duration-300 flex items-center justify-center"
+                  className="flex-1 px-4 py-3 rounded-xl bg-[#B3D8A8] text-black font-medium hover:bg-[#B3D8A8]/80 transition-colors duration-300 flex items-center justify-center"
                   whileHover={{ scale: 1.03 }}
                   whileTap={{ scale: 0.97 }}
                 >
@@ -500,7 +500,7 @@ function QuizPage() {
                 
                 <motion.button
                   onClick={generateNewQuiz}
-                  className="flex-1 px-4 py-3 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-600 text-white font-medium hover:from-blue-700 hover:to-cyan-700 transition-all duration-300 flex items-center justify-center"
+                  className="flex-1 px-4 py-3 rounded-xl bg-gradient-to-r from-[#B3D8A8] to-[#82A878] text-black font-medium hover:opacity-90 transition-all duration-300 flex items-center justify-center"
                   whileHover={{ scale: 1.03 }}
                   whileTap={{ scale: 0.97 }}
                 >
@@ -544,7 +544,7 @@ function QuizPage() {
         <AnimatePresence>
           {!loading && !quizStarted && (
             <motion.div 
-              className="mt-12 p-6 rounded-xl bg-blue-900/20 backdrop-blur-md border border-blue-500/30 text-center"
+              className="mt-12 p-6 rounded-xl bg-[#B3D8A8]/10 backdrop-blur-md border border-[#B3D8A8]/30 text-center"
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.3 }}
@@ -559,9 +559,9 @@ function QuizPage() {
                   repeatType: "reverse"
                 }}
               >
-                <Zap className="w-12 h-12 mx-auto text-blue-400 mb-3" />
+                <Zap className="w-12 h-12 mx-auto text-[#B3D8A8] mb-3" />
               </motion.div>
-              <p className="text-lg text-blue-200">Enter course information and click "Start Quiz" to generate questions.</p>
+              <p className="text-lg text-[#B3D8A8]">Enter course information and click "Start Quiz" to generate questions.</p>
             </motion.div>
           )}
         </AnimatePresence>

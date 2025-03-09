@@ -63,13 +63,13 @@ export function LeaderboardPage() {
   const getTrophyColor = (position: number) => {
     switch (position) {
       case 0: // First place
-        return "text-yellow-500"; // Gold
+        return "text-[#FFD700]"; // Gold
       case 1: // Second place
-        return "text-gray-400"; // Silver
+        return "text-[#C0C0C0]"; // Silver
       case 2: // Third place
-        return "text-amber-700"; // Bronze
+        return "text-[#CD7F32]"; // Bronze
       default:
-        return "text-gray-600"; // Default color
+        return "text-[#B3D8A8]/50"; // Default color using theme
     }
   };
 
@@ -77,10 +77,10 @@ export function LeaderboardPage() {
     const currentUserEmail = user?.email;
     
     return (
-      <div className="card-gradient rounded-xl p-6">
+      <div className="bg-[#B3D8A8]/10 backdrop-blur-lg rounded-xl p-6 border border-[#B3D8A8]/30">
         <div className="flex items-center space-x-3 mb-6">
-          <Icon className="w-6 h-6 text-purple-500" />
-          <h2 className="text-xl font-bold">{title}</h2>
+          <Icon className="w-6 h-6 text-[#B3D8A8]" />
+          <h2 className="text-xl font-bold text-[#FBFFE4]">{title}</h2>
         </div>
         
         <div className="space-y-4">
@@ -92,26 +92,28 @@ export function LeaderboardPage() {
                 key={userData.id}
                 className={`flex items-center p-4 rounded-lg ${
                   isCurrentUser 
-                    ? 'bg-purple-500/20 border border-purple-500/50' 
-                    : 'bg-black/30 border border-gray-800'
+                    ? 'bg-[#B3D8A8]/20 border border-[#B3D8A8]/50' 
+                    : 'bg-[#FBFFE4]/5 border border-[#B3D8A8]/20'
                 }`}
               >
-                <div className="flex-shrink-0 w-8 text-center font-bold">
+                <div className="flex-shrink-0 w-8 text-center font-bold text-[#FBFFE4]">
                   {index + 1}
                 </div>
                 <div className="ml-4 flex-grow">
-                  <h3 className={`font-semibold ${isCurrentUser ? 'text-purple-200' : ''}`}>
+                  <h3 className={`font-semibold ${
+                    isCurrentUser ? 'text-[#B3D8A8]' : 'text-[#FBFFE4]'
+                  }`}>
                     {userData.displayName}
                     {isCurrentUser && " (You)"}
                   </h3>
-                  <p className="text-gray-400 text-sm">{userData.email}</p>
+                  <p className="text-[#FBFFE4]/60 text-sm">{userData.email}</p>
                 </div>
                 <div className="flex items-center space-x-2">
                   <Trophy 
                     className={`w-4 h-4 ${getTrophyColor(index)}`}
                   />
                   <span className={`font-bold ${
-                    isCurrentUser ? 'text-purple-200' : ''
+                    isCurrentUser ? 'text-[#B3D8A8]' : 'text-[#FBFFE4]'
                   }`}>
                     {userData.credits || 0}
                   </span>
@@ -121,7 +123,7 @@ export function LeaderboardPage() {
           })}
           
           {users.length === 0 && (
-            <div className="text-center text-gray-400 py-4">
+            <div className="text-center text-[#FBFFE4]/60 py-4">
               {title === "Friends Leaderboard" 
                 ? "No friends added yet" 
                 : "No users found"}
@@ -135,7 +137,7 @@ export function LeaderboardPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full"></div>
+        <div className="animate-spin w-8 h-8 border-2 border-[#B3D8A8] border-t-transparent rounded-full"></div>
       </div>
     );
   }
