@@ -102,8 +102,8 @@ export function ProfilePage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full"></div>
+      <div className="flex items-center justify-center min-h-screen bg-black text-white">
+        <div className="animate-spin w-8 h-8 border-2 border-[#B3D8A8] border-t-transparent rounded-full"></div>
       </div>
     );
   }
@@ -118,142 +118,147 @@ export function ProfilePage() {
   ];
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-8">
-      <div className="card-gradient rounded-xl p-6">
-        <div className="flex items-start justify-between mb-6">
-          <div className="flex items-center space-x-4">
-            <div className="w-16 h-16 rounded-full overflow-hidden">
-              {!imageError && profile.photoURL ? (
-                <img 
-                  src={profile.photoURL}
-                  alt={profile.displayName}
-                  className="w-full h-full object-cover"
-                  onError={(e) => {
-                    console.log('Image load error:', e);
-                    setImageError(true);
-                  }}
-                  referrerPolicy="no-referrer"
-                  crossOrigin="anonymous"
-                />
-              ) : (
-                <div className="w-full h-full bg-purple-500/20 flex items-center justify-center">
-                  <span className="text-xl font-bold text-purple-500">
-                    {profile.displayName?.charAt(0).toUpperCase()}
-                  </span>
-                </div>
-              )}
-            </div>
-            <div>
-              {editMode ? (
-                <div className="flex items-center space-x-2">
-                  <input
-                    type="text"
-                    value={displayName}
-                    onChange={(e) => setDisplayName(e.target.value)}
-                    className="px-3 py-1 rounded-lg bg-black/50 border border-gray-800 focus:border-purple-500 focus:outline-none"
+    <div className="min-h-screen bg-black text-white">
+      <div className="max-w-4xl mx-auto px-6 py-12">
+        <div className="bg-[#B3D8A8]/10 backdrop-blur-lg p-8 rounded-2xl border border-[#B3D8A8]/30 shadow-lg shadow-[#B3D8A8]/10">
+          <div className="flex flex-col md:flex-row items-start justify-between mb-6 gap-4">
+            <div className="flex items-center space-x-4">
+              <div className="w-20 h-20 rounded-full overflow-hidden">
+                {!imageError && profile.photoURL ? (
+                  <img 
+                    src={profile.photoURL}
+                    alt={profile.displayName}
+                    className="w-full h-full object-cover"
+                    onError={(e) => {
+                      console.log('Image load error:', e);
+                      setImageError(true);
+                    }}
+                    referrerPolicy="no-referrer"
+                    crossOrigin="anonymous"
                   />
-                  <button
-                    onClick={updateProfile}
-                    className="px-4 py-1 rounded-lg bg-purple-500 text-white text-sm"
-                  >
-                    Save
-                  </button>
-                  <button
-                    onClick={() => setEditMode(false)}
-                    className="px-4 py-1 rounded-lg bg-gray-800 text-white text-sm"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              ) : (
-                <div className="flex items-center space-x-2">
-                  <h1 className="text-2xl font-bold">{profile.displayName}</h1>
-                  <button
-                    onClick={() => setEditMode(true)}
-                    className="p-1 rounded-lg bg-purple-500/10 text-purple-500 hover:bg-purple-500/20 transition-colors"
-                  >
-                    <Book className="w-4 h-4" />
-                  </button>
-                </div>
-              )}
-              <p className="text-gray-400">{profile.email}</p>
-              <p className="text-sm text-gray-400 mt-1">Profile picture synced with Google account</p>
+                ) : (
+                  <div className="w-full h-full bg-[#B3D8A8]/20 flex items-center justify-center">
+                    <span className="text-xl font-bold text-[#82A878]">
+                      {profile.displayName?.charAt(0).toUpperCase()}
+                    </span>
+                  </div>
+                )}
+              </div>
+              <div>
+                {editMode ? (
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="text"
+                      value={displayName}
+                      onChange={(e) => setDisplayName(e.target.value)}
+                      className="px-3 py-1 rounded-lg bg-[#B3D8A8]/5 border border-[#B3D8A8]/30 focus:border-[#82A878] focus:ring-2 focus:ring-[#B3D8A8]/40 focus:outline-none transition-all duration-300"
+                    />
+                    <button
+                      onClick={updateProfile}
+                      className="px-4 py-1 rounded-lg bg-gradient-to-r from-[#B3D8A8] to-[#82A878] text-black text-sm font-medium hover:opacity-90 transition-all duration-300"
+                    >
+                      Save
+                    </button>
+                    <button
+                      onClick={() => setEditMode(false)}
+                      className="px-4 py-1 rounded-lg bg-[#B3D8A8]/5 text-white text-sm hover:bg-[#B3D8A8]/10 transition-all duration-300"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center space-x-2">
+                    <h2 className="text-2xl font-bold text-[#B3D8A8]">{profile.displayName}</h2>
+                    <button
+                      onClick={() => setEditMode(true)}
+                      className="p-1 rounded-lg bg-[#B3D8A8]/10 text-[#B3D8A8] hover:bg-[#B3D8A8]/20 transition-colors"
+                    >
+                      <Pencil className="w-4 h-4" />
+                    </button>
+                  </div>
+                )}
+                <p className="text-gray-400">{profile.email}</p>
+                <p className="text-sm text-gray-400 mt-1">Profile picture synced with Google account</p>
+              </div>
             </div>
           </div>
-        </div>
 
-        <div className="mb-6">
-          <div className="flex items-center justify-between mb-2">
-            {!isEditingBio && (
-              <button
-                onClick={() => setIsEditingBio(true)}
-                className="text-purple-500 hover:text-purple-400 transition-colors flex items-center space-x-2 ml-auto"
-              >
-                <Pencil className="w-4 h-4" />
-                <span className="text-sm">Edit Bio</span>
-              </button>
+          <div className="mb-6">
+            <div className="flex items-center justify-between mb-2">
+              {!isEditingBio && (
+                <button
+                  onClick={() => setIsEditingBio(true)}
+                  className="text-[#FFA725] hover:text-[#FFA725]/80 transition-colors flex items-center space-x-2 ml-auto"
+                >
+                  <Pencil className="w-4 h-4" />
+                  <span className="text-sm">Edit Bio</span>
+                </button>
+              )}
+            </div>
+            
+            {isEditingBio ? (
+              <div className="space-y-3">
+                <textarea
+                  value={bio}
+                  onChange={(e) => setBio(e.target.value)}
+                  placeholder="Write something about yourself..."
+                  className="w-full px-4 py-3 rounded-xl bg-[#B3D8A8]/5 backdrop-blur-sm border border-[#B3D8A8]/30 focus:border-[#82A878] focus:ring-2 focus:ring-[#B3D8A8]/40 focus:outline-none transition-all duration-300 resize-none min-h-[120px]"
+                  rows={4}
+                  maxLength={500}
+                />
+                <div className="flex items-center justify-between">
+                  <p className="text-sm text-gray-400">
+                    {500 - bio.length} characters remaining
+                  </p>
+                  <div className="flex space-x-2">
+                    <button
+                      onClick={() => {
+                        setBio(profile.bio || '');
+                        setIsEditingBio(false);
+                      }}
+                      className="px-4 py-2 rounded-lg bg-[#B3D8A8]/5 text-white hover:bg-[#B3D8A8]/10 transition-all duration-300 flex items-center space-x-2"
+                      disabled={loading}
+                    >
+                      <X className="w-4 h-4" />
+                      <span>Cancel</span>
+                    </button>
+                    <button
+                      onClick={handleSaveBio}
+                      className="px-4 py-2 rounded-lg bg-gradient-to-r from-[#B3D8A8] to-[#82A878] text-black font-medium hover:opacity-90 transition-all duration-300 flex items-center space-x-2"
+                      disabled={loading}
+                    >
+                      <Check className="w-4 h-4" />
+                      <span>Save</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="bg-[#FFF5E4]/5 backdrop-blur-sm rounded-xl p-4 border border-[#B3D8A8]/30">
+                <p className="text-[#FFA725] mb-2 font-medium">About Me</p>
+                <p className="text-gray-300">
+                  {profile.bio || "No bio added yet. Click 'Edit Bio' to add one!"}
+                </p>
+              </div>
             )}
           </div>
-          
-          {isEditingBio ? (
-            <div className="space-y-3">
-              <textarea
-                value={bio}
-                onChange={(e) => setBio(e.target.value)}
-                placeholder="Write something about yourself..."
-                className="w-full px-4 py-3 rounded-lg bg-black/30 border border-gray-800 focus:border-purple-500 focus:outline-none resize-none min-h-[120px]"
-                rows={4}
-                maxLength={500}
-              />
-              <div className="flex items-center justify-between">
-                <p className="text-sm text-gray-400">
-                  {500 - bio.length} characters remaining
-                </p>
-                <div className="flex space-x-2">
-                  <button
-                    onClick={() => {
-                      setBio(profile.bio || '');
-                      setIsEditingBio(false);
-                    }}
-                    className="px-4 py-2 rounded-lg bg-gray-800 text-white hover:bg-gray-700 transition-colors flex items-center space-x-2"
-                    disabled={loading}
-                  >
-                    <X className="w-4 h-4" />
-                    <span>Cancel</span>
-                  </button>
-                  <button
-                    onClick={handleSaveBio}
-                    className="px-4 py-2 rounded-lg bg-purple-500 text-white hover:bg-purple-600 transition-colors flex items-center space-x-2"
-                    disabled={loading}
-                  >
-                    <Check className="w-4 h-4" />
-                    <span>Save</span>
-                  </button>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="bg-black/30 rounded-lg p-4 border border-gray-800">
-              <p className="text-sm text-gray-400 mb-2">About Me</p>
-              <p className="text-gray-300">
-                {profile.bio || "No bio added yet. Click 'Edit Bio' to add one!"}
-              </p>
-            </div>
-          )}
-        </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {stats.map((stat, index) => (
-            <div key={index} className="p-4 rounded-lg bg-black/30 border border-gray-800">
-              <div className="flex items-center space-x-3">
-                <stat.icon className="w-5 h-5 text-purple-500" />
-                <div>
-                  <p className="text-sm text-gray-400">{stat.label}</p>
-                  <p className="font-bold">{stat.value}</p>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            {stats.map((stat, index) => (
+              <div 
+                key={index} 
+                className="p-4 rounded-xl bg-[#B3D8A8]/5 backdrop-blur-sm border border-[#B3D8A8]/30 hover:shadow-[#B3D8A8]/10 hover:shadow-lg transition-all duration-300"
+              >
+                <div className="flex items-center space-x-3">
+                  <stat.icon className="w-5 h-5 text-[#FFA725]" />
+                  <div>
+                    <p className="text-sm text-[#B3D8A8]">{stat.label}</p>
+                    <p className="font-bold text-white">{stat.value}</p>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       </div>
     </div>
