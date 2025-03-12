@@ -70,8 +70,8 @@ export function LecturesPage() {
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">
-      <div className="card-gradient rounded-xl p-6 mb-8">
-        <h1 className="text-2xl font-bold mb-4">Find Relevant Lectures</h1>
+      <div className="bg-[#B3D8A8]/10 backdrop-blur-lg rounded-xl p-6 border border-[#B3D8A8]/30 mb-8">
+        <h1 className="text-2xl font-bold mb-4 text-[#B3D8A8]">Find Relevant Lectures</h1>
         <div className="space-y-4">
           <div className="flex flex-col md:flex-row gap-4">
             <input
@@ -79,7 +79,7 @@ export function LecturesPage() {
               placeholder="Enter your topic or paste your notes"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              className="flex-1 px-4 py-2 rounded-lg bg-black/50 border border-gray-800 focus:border-purple-500 focus:outline-none"
+              className="flex-1 px-4 py-2 rounded-lg bg-[#B3D8A8]/5 border border-[#B3D8A8]/30 focus:border-[#82A878] focus:outline-none"
             />
             <div className="relative">
               <input
@@ -91,7 +91,7 @@ export function LecturesPage() {
               />
               <label
                 htmlFor="file-upload"
-                className="cursor-pointer px-6 py-2 rounded-lg bg-purple-500/10 text-purple-500 hover:bg-purple-500/20 transition-colors flex items-center space-x-2"
+                className="cursor-pointer px-6 py-2 rounded-lg bg-[#B3D8A8]/10 text-[#B3D8A8] hover:bg-[#B3D8A8]/20 transition-colors flex items-center space-x-2"
               >
                 <Upload className="w-5 h-5" />
                 <span>Upload File</span>
@@ -101,7 +101,7 @@ export function LecturesPage() {
           <button
             onClick={findLectures}
             disabled={loading}
-            className="w-full md:w-auto px-6 py-2 rounded-lg bg-gradient-to-r from-purple-600 to-pink-600 text-white font-medium hover:opacity-90 transition-opacity flex items-center justify-center space-x-2"
+            className="w-full md:w-auto px-6 py-2 rounded-lg bg-gradient-to-r from-[#B3D8A8] to-[#82A878] text-black font-medium hover:opacity-90 transition-opacity flex items-center justify-center space-x-2"
           >
             {loading ? (
               <>
@@ -126,17 +126,17 @@ export function LecturesPage() {
       {suggestions.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {suggestions.map((video, index) => (
-            <div key={index} className="card-gradient rounded-xl p-6">
+            <div key={index} className="bg-[#B3D8A8]/10 backdrop-blur-lg rounded-xl p-6 border border-[#B3D8A8]/30">
               <div className="flex items-start space-x-4">
-                <Video className="w-8 h-8 text-purple-500 flex-shrink-0" />
+                <Video className="w-8 h-8 text-[#B3D8A8] flex-shrink-0" />
                 <div>
-                  <h3 className="font-semibold mb-2">{video.title}</h3>
+                  <h3 className="font-semibold mb-2 text-[#B3D8A8]">{video.title}</h3>
                   <p className="text-gray-400 text-sm mb-3">{video.description}</p>
                   <a
                     href={video.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-purple-500 hover:text-purple-400 text-sm"
+                    className="text-[#B3D8A8] hover:text-[#82A878] text-sm"
                   >
                     Watch Video →
                   </a>
