@@ -19,6 +19,7 @@ function QuizPage() {
   const [answeredQuestions, setAnsweredQuestions] = useState({});
   const [showExplanations, setShowExplanations] = useState({});
   const [generatingAnimation, setGeneratingAnimation] = useState(false);
+  const [scoringInfo, setScoringInfo] = useState("");
 
   useEffect(() => {
     if (location.state?.fromTutor) {
@@ -34,6 +35,22 @@ function QuizPage() {
       return () => clearTimeout(timer);
     }
   }, [loading]);
+
+  useEffect(() => {
+    switch(level) {
+      case "Beginner":
+        setScoringInfo("Scoring: +1 point for each correct answer");
+        break;
+      case "Intermediate":
+        setScoringInfo("Scoring: +2 points for each correct answer");
+        break;
+      case "Advanced":
+        setScoringInfo("Scoring: +3 points for each correct answer, -1 point for wrong answers");
+        break;
+      default:
+        setScoringInfo("");
+    }
+  }, [level]);
 
   const startQuiz = async () => {
     if (!course || !topic || !level) {
@@ -126,21 +143,36 @@ function QuizPage() {
     setQuizStarted(false);
   };
 
-  // Calculate score
   const calculateScore = () => {
-    if (quizData.length === 0) return { correct: 0, total: 0, percentage: 0 };
+    if (quizData.length === 0) return { correct: 0, total: 0, percentage: 0, points: 0 };
     
     let correct = 0;
+    let points = 0;
+    
     Object.keys(selectedAnswers).forEach(index => {
-      if (selectedAnswers[index] === quizData[index].answer) {
+      const isCorrect = selectedAnswers[index] === quizData[index].answer;
+      if (isCorrect) {
         correct++;
+        switch(level) {
+          case "Beginner":
+            points += 1;
+            break;
+          case "Intermediate":
+            points += 2;
+            break;
+          case "Advanced":
+            points += 3;
+            break;
+        }
+      } else if (level === "Advanced") {
+        points -= 1; // Negative marking for Advanced level
       }
     });
     
     const answered = Object.keys(selectedAnswers).length;
     const percentage = answered > 0 ? Math.round((correct / answered) * 100) : 0;
     
-    return { correct, total: answered, percentage };
+    return { correct, total: answered, percentage, points };
   };
 
   const score = calculateScore();
@@ -213,19 +245,41 @@ function QuizPage() {
               />
             </motion.div>
             
-            <motion.div whileHover={{ scale: 1.02 }}>
+            <motion.div 
+              whileHover={{ scale: 1.02 }}
+              className="relative"
+            >
+              <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-blue-300">
+                <Award className="w-5 h-5" />
+              </span>
               <select
                 value={level}
                 onChange={(e) => setLevel(e.target.value)}
-                className="w-full px-4 py-3 rounded-xl bg-[#B3D8A8]/5 border border-[#B3D8A8]/30 focus:border-[#82A878] focus:ring-2 focus:ring-[#B3D8A8]/40 focus:outline-none transition-all duration-300"
+                className="w-full pl-10 px-4 py-3 rounded-xl bg-[#B3D8A8]/5 backdrop-blur-lg border border-[#B3D8A8]/30 text-white focus:border-[#82A878] focus:ring-2 focus:ring-[#B3D8A8]/40 focus:outline-none transition-all duration-300 appearance-none"
+                style={{
+                  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%23B3D8A8'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`,
+                  backgroundRepeat: 'no-repeat',
+                  backgroundPosition: 'right 1rem center',
+                  backgroundSize: '1.5em 1.5em'
+                }}
               >
-                <option value="">Select Difficulty Level</option>
-                <option value="Placement">Placement</option>
-                <option value="GATE">GATE</option>
-                <option value="Semester Exam">Semester Exam</option>
+                <option value="" className="bg-[#1a1a1a] text-white">Select Difficulty Level</option>
+                <option value="Beginner" className="bg-[#1a1a1a] text-white">Beginner</option>
+                <option value="Intermediate" className="bg-[#1a1a1a] text-white">Intermediate</option>
+                <option value="Advanced" className="bg-[#1a1a1a] text-white">Advanced</option>
               </select>
             </motion.div>
           </div>
+
+          {scoringInfo && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="mt-2 p-3 rounded-lg bg-[#B3D8A8]/5 border border-[#B3D8A8]/30"
+            >
+              <p className="text-sm text-[#B3D8A8]">{scoringInfo}</p>
+            </motion.div>
+          )}
 
           <motion.button
             onClick={startQuiz}
@@ -336,6 +390,7 @@ function QuizPage() {
                         <p className="font-medium">
                           Score: <span className="font-bold text-green-400">{score.correct}</span>/{score.total} 
                           <span className="ml-2 text-yellow-300">{score.percentage}%</span>
+                          <span className="ml-2 text-[#B3D8A8]">({score.points} points)</span>
                           <span className="ml-1 text-xl">{getScoreEmoji()}</span>
                         </p>
                       </div>
