@@ -4,8 +4,10 @@ import { db } from "../lib/firebase";
 import { collection, addDoc } from "firebase/firestore";
 import { Loader, CheckCircle, XCircle, RefreshCw, Info, ChevronDown, ChevronUp, Zap, BookOpen, Award } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useLocation } from 'react-router-dom';
 
 function QuizPage() {
+  const location = useLocation();
   const [course, setCourse] = useState("");
   const [topic, setTopic] = useState("");
   const [level, setLevel] = useState("");
@@ -17,6 +19,13 @@ function QuizPage() {
   const [answeredQuestions, setAnsweredQuestions] = useState({});
   const [showExplanations, setShowExplanations] = useState({});
   const [generatingAnimation, setGeneratingAnimation] = useState(false);
+
+  useEffect(() => {
+    if (location.state?.fromTutor) {
+      if (location.state.course) setCourse(location.state.course);
+      if (location.state.topic) setTopic(location.state.topic);
+    }
+  }, [location]);
 
   useEffect(() => {
     if (loading) {
