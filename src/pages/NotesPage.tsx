@@ -72,20 +72,20 @@ export function NotesPage() {
   
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">
-      <div className="card-gradient rounded-xl p-6 mb-8">
-        <h1 className="text-2xl font-bold mb-4">Generate Smart Notes</h1>
+      <div className="bg-[#B3D8A8]/10 backdrop-blur-lg rounded-xl p-6 border border-[#B3D8A8]/30 mb-8">
+        <h1 className="text-2xl font-bold mb-4 text-[#B3D8A8]">Generate Smart Notes</h1>
         <div className="space-y-4">
           <input
             type="text"
             placeholder="Enter YouTube video URL"
             value={videoUrl}
             onChange={(e) => setVideoUrl(e.target.value)}
-            className="w-full px-4 py-2 rounded-lg bg-black/50 border border-gray-800 focus:border-purple-500 focus:outline-none"
+            className="w-full px-4 py-2 rounded-lg bg-[#B3D8A8]/5 border border-[#B3D8A8]/30 focus:border-[#82A878] focus:outline-none"
           />
           <button
             onClick={generateNotes}
             disabled={loading}
-            className="w-full md:w-auto px-6 py-2 rounded-lg bg-gradient-to-r from-purple-600 to-pink-600 text-white font-medium hover:opacity-90 transition-opacity flex items-center justify-center space-x-2"
+            className="w-full md:w-auto px-6 py-2 rounded-lg bg-gradient-to-r from-[#B3D8A8] to-[#82A878] text-black font-medium hover:opacity-90 transition-opacity flex items-center justify-center space-x-2"
           >
             {loading ? (
               <>
@@ -108,8 +108,8 @@ export function NotesPage() {
       </div>
 
       {notes && (
-        <div className="card-gradient rounded-xl p-6 mb-8">
-          <h2 className="text-xl font-semibold mb-4">Generated Notes</h2>
+        <div className="bg-[#B3D8A8]/10 backdrop-blur-lg rounded-xl p-6 mb-8 border border-[#B3D8A8]/30">
+          <h2 className="text-xl font-semibold mb-4 text-[#B3D8A8]">Generated Notes</h2>
           <div className="prose prose-invert max-w-none">
             <pre className="whitespace-pre-wrap font-sans">{notes}</pre>
           </div>
@@ -117,15 +117,15 @@ export function NotesPage() {
       )}
 
       {savedNotes.length > 0 && (
-        <div className="card-gradient rounded-xl p-6">
-          <h2 className="text-xl font-semibold mb-4">Previously Generated Notes</h2>
+        <div className="bg-[#B3D8A8]/10 backdrop-blur-lg rounded-xl p-6 border border-[#B3D8A8]/30">
+          <h2 className="text-xl font-semibold mb-4 text-[#B3D8A8]">Previously Generated Notes</h2>
           <div className="space-y-4">
             {savedNotes.map((note) => (
-              <div key={note.id} className="p-4 rounded-lg bg-black/30 border border-gray-800">
-                <p className="text-sm text-gray-400 mb-2">
+              <div key={note.id} className="p-4 rounded-lg bg-[#B3D8A8]/5 border border-[#B3D8A8]/30">
+                <p className="text-sm text-[#B3D8A8] mb-2">
                   {note.timestamp.toDate().toLocaleString()}
                 </p>
-                <p className="text-sm text-blue-400 mb-2">{note.videoUrl}</p>
+                <p className="text-sm text-[#B3D8A8] mb-2">{note.videoUrl}</p>
                 <pre className="whitespace-pre-wrap font-sans text-sm">{note.notes}</pre>
               </div>
             ))}
