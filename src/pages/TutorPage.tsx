@@ -34,7 +34,7 @@ interface Message {
   id?: string;  // Added id to the interface
 }
 
-// Add this helper function to convert asterisks to bold text
+// Update the formatMessage function to use HTML bold tags
 const formatMessage = (text: string) => {
   return text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
 };
@@ -196,110 +196,94 @@ Remember to use **bold** formatting (with double asterisks) for important terms 
   };
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-8">
-      <div className="card-gradient rounded-xl p-6 mb-8">
-        <h1 className="text-2xl font-bold mb-4">AI Tutor</h1>
-        <p className="text-gray-400">
-          Ask any questions and get instant help from your AI tutor.
-        </p>
-      </div>
+    <div className="min-h-screen bg-black text-white">
+      <div className="max-w-4xl mx-auto px-4 py-8">
+        {/* Header Card */}
+        <div className="bg-[#B3D8A8]/10 backdrop-blur-lg rounded-2xl p-6 border border-[#B3D8A8]/30 shadow-lg shadow-[#B3D8A8]/10 mb-6">
+          <div className="flex items-center space-x-3 mb-2">
+            <Bot className="w-6 h-6 text-[#B3D8A8]" />
+            <h2 className="text-xl font-bold text-[#B3D8A8]">AI Study Assistant</h2>
+          </div>
+          <p className="text-gray-400">
+            Ask me anything about your studies. I'm here to help!
+          </p>
+        </div>
 
-      <div className="card-gradient rounded-xl p-6">
-        <div className="h-[500px] flex flex-col">
-          <div className="flex-1 overflow-y-auto mb-4 space-y-4">
-            {messages.map((message) => (
-              <div
-                key={message.id}
-                className={`flex items-start space-x-3 ${
-                  message.role === 'user' ? 'justify-end' : ''
-                }`}
-              >
-                {message.role === 'assistant' && (
-                  <div className="w-8 h-8 rounded-full bg-purple-500/20 flex items-center justify-center flex-shrink-0">
-                    <Bot className="w-5 h-5 text-purple-500" />
-                  </div>
-                )}
+        {/* Chat Container */}
+        <div className="bg-[#B3D8A8]/10 backdrop-blur-lg rounded-2xl p-6 border border-[#B3D8A8]/30 shadow-lg shadow-[#B3D8A8]/10">
+          <div className="h-[500px] flex flex-col">
+            <div className="flex-1 overflow-y-auto space-y-4 mb-4 scrollbar-thin scrollbar-thumb-[#B3D8A8]/20 scrollbar-track-transparent">
+              {messages.map((message, index) => (
                 <div
-                  className={`rounded-lg p-3 max-w-[80%] ${
-                    message.role === 'user'
-                      ? 'bg-purple-500/10 text-purple-50'
-                      : 'bg-black/30 border border-gray-800'
+                  key={message.id || index}
+                  className={`flex ${
+                    message.role === 'assistant' ? 'justify-start' : 'justify-end'
                   }`}
                 >
-                  <p 
-                    className="whitespace-pre-wrap"
-                    dangerouslySetInnerHTML={{ 
-                      __html: formatMessage(message.content) 
-                    }}
-                  />
-                </div>
-                {message.role === 'user' && (
-                  <div className="w-8 h-8 rounded-full overflow-hidden flex-shrink-0">
-                    {user?.photoURL ? (
-                      <img 
-                        src={user.photoURL} 
-                        alt={user.displayName || 'User'} 
-                        className="w-full h-full object-cover"
-                        referrerPolicy="no-referrer"
-                      />
-                    ) : (
-                      <div className="w-full h-full bg-purple-500/20 flex items-center justify-center">
-                        <User className="w-5 h-5 text-purple-500" />
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            ))}
-            
-            {isThinking && (
-              <div className="flex items-start space-x-3">
-                <div className="w-8 h-8 rounded-full bg-purple-500/20 flex items-center justify-center flex-shrink-0">
-                  <Bot className="w-5 h-5 text-purple-500" />
-                </div>
-                <div className="rounded-lg p-3 bg-black/30 border border-gray-800">
-                  <div className="flex space-x-2">
-                    {[0, 0.2, 0.4].map((delay, index) => (
-                      <div
-                        key={index}
-                        className="w-2 h-2 bg-purple-500 rounded-full"
-                        style={{
-                          animationName: 'bounce',
-                          animationDuration: '1s',
-                          animationIterationCount: 'infinite',
-                          animationDelay: `${delay}s`
+                  <div
+                    className={`max-w-[80%] rounded-2xl p-4 ${
+                      message.role === 'assistant'
+                        ? 'bg-[#B3D8A8]/5 border border-[#B3D8A8]/30'
+                        : 'bg-gradient-to-r from-[#B3D8A8] to-[#82A878] text-black'
+                    }`}
+                  >
+                    <div className="flex items-start space-x-2">
+                      {message.role === 'assistant' && (
+                        <Bot className="w-5 h-5 mt-1 text-[#B3D8A8]" />
+                      )}
+                      {message.role === 'user' && (
+                        <User className="w-5 h-5 mt-1" />
+                      )}
+                      <p 
+                        className="whitespace-pre-wrap"
+                        dangerouslySetInnerHTML={{ 
+                          __html: message.role === 'assistant' 
+                            ? formatMessage(message.content) 
+                            : message.content 
                         }}
-                      ></div>
-                    ))}
+                      />
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
-            
-            <div ref={messagesEndRef} />
-          </div>
-
-          <div className="flex items-center space-x-2">
-            <input
-              type="text"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
-              placeholder="Ask your question..."
-              className="flex-1 px-4 py-2 rounded-lg bg-black/50 border border-gray-800 focus:border-purple-500 focus:outline-none"
-              disabled={loading}
-            />
-            <button
-              onClick={sendMessage}
-              disabled={loading}
-              className="p-2 rounded-lg bg-purple-500 text-white hover:bg-purple-600 transition-colors disabled:opacity-50"
-            >
-              {loading ? (
-                <Loader className="w-5 h-5 animate-spin" />
-              ) : (
-                <Send className="w-5 h-5" />
+              ))}
+              {isThinking && (
+                <div className="flex justify-start">
+                  <div className="bg-[#B3D8A8]/5 border border-[#B3D8A8]/30 rounded-2xl p-4">
+                    <div className="flex items-center space-x-2">
+                      <Bot className="w-5 h-5 text-[#B3D8A8]" />
+                      <div className="flex space-x-1">
+                        <div className="w-2 h-2 rounded-full bg-[#B3D8A8] animate-bounce" />
+                        <div className="w-2 h-2 rounded-full bg-[#B3D8A8] animate-bounce delay-100" />
+                        <div className="w-2 h-2 rounded-full bg-[#B3D8A8] animate-bounce delay-200" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
               )}
-            </button>
+            </div>
+
+            <div className="flex items-center space-x-2">
+              <input
+                type="text"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
+                placeholder="Ask your question..."
+                className="flex-1 px-4 py-2 rounded-xl bg-[#B3D8A8]/5 border border-[#B3D8A8]/30 focus:border-[#82A878] focus:ring-2 focus:ring-[#B3D8A8]/40 focus:outline-none transition-all duration-300"
+                disabled={loading}
+              />
+              <button
+                onClick={sendMessage}
+                disabled={loading}
+                className="p-2 rounded-xl bg-gradient-to-r from-[#B3D8A8] to-[#82A878] text-black hover:opacity-90 transition-all duration-300 disabled:opacity-50"
+              >
+                {loading ? (
+                  <Loader className="w-5 h-5 animate-spin" />
+                ) : (
+                  <Send className="w-5 h-5" />
+                )}
+              </button>
+            </div>
           </div>
         </div>
       </div>
