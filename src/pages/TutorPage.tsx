@@ -4,6 +4,8 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import { db } from '../lib/firebase';
 import { useAuthStore } from '../lib/store';
 import { collection, addDoc, query, where, orderBy, onSnapshot, serverTimestamp } from 'firebase/firestore';
+import { useNavigate } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
 
 // Safety check for API key
 const apiKey = import.meta.env.VITE_PUBLIC_GEMINI_API_KEY;
@@ -43,7 +45,10 @@ export function TutorPage() {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [isThinking, setIsThinking] = useState(false);
+  const [showQuizPrompt, setShowQuizPrompt] = useState(false);
+  const [lastTopic, setLastTopic] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const navigate = useNavigate();
 
   useEffect(() => {
     if (!user) return;
@@ -82,6 +87,17 @@ export function TutorPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  const handleQuizRedirect = () => {
+    const words = lastTopic.trim().split(/\s+/);
+    navigate('/quiz', { 
+      state: { 
+        course: words.length > 1 ? words[0] : "",
+        topic: words.length > 1 ? words.slice(1).join(" ") : words[0],
+        fromTutor: true
+      } 
+    });
+  };
+
   const sendMessage = async () => {
     if (!input.trim() || !user || loading) return;
 
@@ -89,6 +105,8 @@ export function TutorPage() {
     setInput('');
     setLoading(true);
     setIsThinking(true);
+    setShowQuizPrompt(false); // Hide any existing quiz prompt
+    setLastTopic(userMessage); // Store the topic
 
     try {
       // Save user message first
@@ -157,6 +175,8 @@ Remember to use **bold** formatting (with double asterisks) for important terms 
           timestamp: serverTimestamp()
         });
 
+        // After successfully getting the AI response
+        setShowQuizPrompt(true); // Show the quiz prompt
       } catch (error) {
         console.error('Gemini API Error:', error);
         throw error;
@@ -283,6 +303,57 @@ Remember to use **bold** formatting (with double asterisks) for important terms 
           </div>
         </div>
       </div>
+
+      {/* Updated Quiz Prompt */}
+      <AnimatePresence>
+        {showQuizPrompt && (
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 20 }}
+            className="fixed bottom-4 right-4 z-50"
+          >
+            <div className="space-y-4 bg-[#B3D8A8]/10 backdrop-blur-lg p-6 rounded-2xl border border-[#B3D8A8]/30 shadow-lg shadow-[#B3D8A8]/10">
+              <p className="text-lg font-semibold text-white">
+                Test your knowledge?
+              </p>
+              <p className="text-sm text-gray-300">
+                Would you like to take a quiz about <span className="text-[#B3D8A8]">{lastTopic}</span>?
+              </p>
+              <div className="flex space-x-3">
+                <motion.button
+                  onClick={() => setShowQuizPrompt(false)}
+                  className="flex-1 px-4 py-2 rounded-xl bg-gray-600 text-white font-medium hover:bg-gray-700 transition-colors duration-300"
+                  whileHover={{ scale: 1.03 }}
+                  whileTap={{ scale: 0.97 }}
+                >
+                  No, thanks
+                </motion.button>
+                <motion.button
+                  onClick={handleQuizRedirect}
+                  className="flex-1 px-4 py-2 rounded-xl bg-gradient-to-r from-[#B3D8A8] to-[#82A878] text-black font-medium hover:opacity-90 transition-all duration-300"
+                  whileHover={{ scale: 1.03 }}
+                  whileTap={{ scale: 0.97 }}
+                >
+                  Take Quiz
+                </motion.button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
+
+// Add this CSS to your global styles
+const styles = `
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-out;
+}
+`;
