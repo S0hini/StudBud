@@ -1,8 +1,6 @@
 import React, { useState } from 'react';
-import { Search, Loader, Video, Upload } from 'lucide-react';
-import { model } from '../lib/gemini';
-import { storage } from '../lib/firebase';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { Search, Loader, Video } from 'lucide-react';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 
 interface VideoSuggestion {
   title: string;
@@ -16,38 +14,9 @@ export function LecturesPage() {
   const [suggestions, setSuggestions] = useState<VideoSuggestion[]>([]);
   const [error, setError] = useState('');
 
-  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    setLoading(true);
-    setError('');
-
-    try {
-      // Upload file to Firebase Storage
-      const storageRef = ref(storage, `documents/${Date.now()}_${file.name}`);
-      await uploadBytes(storageRef, file);
-      const downloadURL = await getDownloadURL(storageRef);
-
-      // Extract text from image using Gemini API
-      const result = await model.generateContent([
-        {
-          text: `Extract and summarize the text content from this image: ${downloadURL}`,
-        },
-      ]);
-      const response = result.response.text();
-      setQuery(response);
-    } catch (err) {
-      setError('Failed to process the file. Please try again.');
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const findLectures = async () => {
     if (!query.trim()) {
-      setError('Please enter a search query or upload a document');
+      setError('Please enter a search query');
       return;
     }
 
@@ -55,11 +24,30 @@ export function LecturesPage() {
     setError('');
 
     try {
+      // Initialize the Gemini API with your API key
+      const genAI = new GoogleGenerativeAI(import.meta.env.VITE_PUBLIC_GEMINI_API_KEY || '');
+      
+      // For Gemini 1.5 Pro or other latest models
+      const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
+      
       const prompt = `Find 5 relevant educational YouTube videos about: ${query}. For each video, provide the title, URL, and a brief description. Format the response as JSON array with properties: title, url, description.`;
-      const result = await model.generateContent([{ text: prompt }]);
-      const response = result.response.text();
-      const videos = JSON.parse(response);
-      setSuggestions(videos);
+      
+      const result = await model.generateContent(prompt);
+      const response = await result.response.text();
+      
+      try {
+        const videos = JSON.parse(response);
+        setSuggestions(videos);
+      } catch (parseError) {
+        // If JSON parsing fails, try to extract JSON from the text response
+        const jsonMatch = response.match(/\[[\s\S]*\]/);
+        if (jsonMatch) {
+          const videos = JSON.parse(jsonMatch[0]);
+          setSuggestions(videos);
+        } else {
+          throw new Error("Failed to parse response as JSON");
+        }
+      }
     } catch (err) {
       setError('Failed to find lectures. Please try again.');
       console.error(err);
@@ -76,27 +64,11 @@ export function LecturesPage() {
           <div className="flex flex-col md:flex-row gap-4">
             <input
               type="text"
-              placeholder="Enter your topic or paste your notes"
+              placeholder="Enter your topic"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               className="flex-1 px-4 py-2 rounded-lg bg-[#B3D8A8]/5 border border-[#B3D8A8]/30 focus:border-[#82A878] focus:outline-none"
             />
-            <div className="relative">
-              <input
-                type="file"
-                accept=".pdf,.doc,.docx,.txt,image/*"
-                onChange={handleFileUpload}
-                className="hidden"
-                id="file-upload"
-              />
-              <label
-                htmlFor="file-upload"
-                className="cursor-pointer px-6 py-2 rounded-lg bg-[#B3D8A8]/10 text-[#B3D8A8] hover:bg-[#B3D8A8]/20 transition-colors flex items-center space-x-2"
-              >
-                <Upload className="w-5 h-5" />
-                <span>Upload File</span>
-              </label>
-            </div>
           </div>
           <button
             onClick={findLectures}
