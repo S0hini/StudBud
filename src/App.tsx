@@ -15,13 +15,13 @@ import { TutorPage } from './pages/TutorPage';
 import { ProfilePage } from './pages/ProfilePage';
 import QuizPage from './pages/QuizPage'; // Import the new QuizPage
 import { LoginPage } from './pages/LoginPage'; // Import the updated LoginPage
-
+import { Spinner } from './components/Spinner'; // Import the Spinner component
 
 export function App() {
   const { user, loading } = useAuthStore();
 
   if (loading) {
-    return <div>Loading...</div>;
+    return <Spinner />;
   }
 
   const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
@@ -34,9 +34,7 @@ export function App() {
   return (
     <Router>
       <div className="min-h-screen bg-black">
- 
         <Sidebar />
-        
         <main className={`pt-16 ${user ? 'md:pl-64' : ''}`}>
           <div className="min-h-[calc(100vh-64px)]">
             <Routes>
@@ -78,7 +76,6 @@ export function App() {
                 </ProtectedRoute>
               } />
               <Route path="/profile" element={
-
                 <ProtectedRoute>
                   <ProfilePage />
                 </ProtectedRoute>
