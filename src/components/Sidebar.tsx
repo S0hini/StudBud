@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   BookOpen,
   Video,
@@ -26,7 +26,8 @@ const menuItems = [
 
 export function Sidebar() {
   const location = useLocation();
-  const { user, credits } = useAuthStore();
+  const navigate = useNavigate();
+  const { user, credits, signOut } = useAuthStore();
   const [isOpen, setIsOpen] = useState(false);
   const [windowWidth, setWindowWidth] = useState(window.innerWidth);
 
@@ -80,7 +81,7 @@ export function Sidebar() {
             AI Academic Assistant
           </Link>
           <Link 
-            to="#" 
+            to="/login" 
             className="px-4 py-2 rounded-lg bg-gradient-to-r from-[#B3D8A8] to-[#82A878] text-black font-medium hover:opacity-90 transition-opacity"
           >
             Sign In
@@ -220,8 +221,8 @@ export function Sidebar() {
               windowWidth >= 768 ? "justify-center group-hover:justify-start" : ""
             )}
             onClick={() => {
-              // Add your logout logic here
-              console.log('Logout clicked');
+              signOut();
+              navigate('/login'); // Redirect to the login page after sign out
             }}
           >
             <LogOut className="w-6 h-6 min-w-6" />
