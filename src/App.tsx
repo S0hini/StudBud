@@ -3,7 +3,6 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from './lib/firebase';
 import { useAuthStore } from './lib/store';
-import { Navbar } from './components/Navbar';
 import { Sidebar } from './components/Sidebar';
 import { Footer } from './components/Footer';
 import { LandingPage } from './pages/LandingPage';
@@ -35,7 +34,7 @@ export function App() {
   return (
     <Router>
       <div className="min-h-screen bg-black">
-        <Navbar />
+ 
         <Sidebar />
         
         <main className={`pt-16 ${user ? 'md:pl-64' : ''}`}>
