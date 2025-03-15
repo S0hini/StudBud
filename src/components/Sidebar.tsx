@@ -10,14 +10,12 @@ import {
   Menu,
   X,
   ChevronRight,
-  LogOut,
-  Home
+  LogOut
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useAuthStore } from '../lib/store';
 
 const menuItems = [
-  { path: '/', icon: Home, label: 'Home' },
   { path: '/notes', icon: BookOpen, label: 'Get Notes' },
   { path: '/lectures', icon: Video, label: 'Find a Lecture' },
   { path: '/tutor', icon: Brain, label: 'AI Tutor' },
@@ -82,7 +80,7 @@ export function Sidebar() {
             AI Academic Assistant
           </Link>
           <Link 
-            to="/login" 
+            to="#" 
             className="px-4 py-2 rounded-lg bg-gradient-to-r from-[#B3D8A8] to-[#82A878] text-black font-medium hover:opacity-90 transition-opacity"
           >
             Sign In

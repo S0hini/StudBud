@@ -6,7 +6,6 @@ import { useAuthStore } from './lib/store';
 import { Sidebar } from './components/Sidebar';
 import { Footer } from './components/Footer';
 import { LandingPage } from './pages/LandingPage';
-import { LoginPage } from './pages/LoginPage';
 import { NotesPage } from './pages/NotesPage';
 import { LecturesPage } from './pages/LecturesPage';
 import { FriendsPage } from './pages/FriendsPage';
@@ -15,6 +14,7 @@ import { CreditsPage } from './pages/CreditsPage';
 import { TutorPage } from './pages/TutorPage';
 import { ProfilePage } from './pages/ProfilePage';
 import QuizPage from './pages/QuizPage'; // Import the new QuizPage
+import { LoginPage } from './pages/LoginPage'; // Import the updated LoginPage
 
 
 export function App() {
@@ -40,7 +40,7 @@ export function App() {
         <main className={`pt-16 ${user ? 'md:pl-64' : ''}`}>
           <div className="min-h-[calc(100vh-64px)]">
             <Routes>
-              <Route path="/login" element={user ? <Navigate to="/" /> : <LoginPage />} />
+              <Route path="/login" element={user ? <Navigate to="/notes" /> : <LoginPage />} />
               <Route path="/" element={<LandingPage />} />
               <Route path="/notes" element={
                 <ProtectedRoute>
