@@ -6,7 +6,7 @@ service cloud.firestore {
       allow create: if request.auth != null && request.auth.uid == userId;
       allow update: if request.auth != null && request.auth.uid == userId;
 
-      // Validate user document structure
+     
       function isValidUser() {
         let user = request.resource.data;
         return user.displayName is string
