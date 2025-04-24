@@ -33,10 +33,10 @@ export function App() {
 
   return (
     <Router>
-      <div className="min-h-screen bg-black">
+      <div className="min-h-screen bg-black flex flex-col">
         <Sidebar />
-        <main className={`pt-16 ${user ? 'md:pl-64' : ''}`}>
-          <div className="min-h-[calc(100vh-64px)]">
+        <main className={`pt-16 ${user ? 'md:pl-64' : ''} flex-1 flex flex-col`}>
+          <div className="min-h-[calc(170vh-120px)] flex-1 pb-16">
             <Routes>
               <Route path="/login" element={user ? <Navigate to="/notes" /> : <LoginPage />} />
               <Route path="/" element={<LandingPage />} />
