@@ -13,6 +13,7 @@
     "@google/generative-ai": "^0.24.0",
     "@lottiefiles/dotlottie-react": "^0.13.0",
     "@lottiefiles/dotlottie-web": "^0.40.1",
+    "axios": "^1.8.4",
     "clsx": "^2.1.0",
     "firebase": "^10.14.1",
     "framer-motion": "^12.4.3",
