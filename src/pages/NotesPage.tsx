@@ -4,6 +4,9 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import { db } from '../lib/firebase';
 import { collection, addDoc, getDocs, query, orderBy, where } from "firebase/firestore";
 import { useAuthStore } from '../lib/store';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import rehypeRaw from 'rehype-raw';
 
 export function NotesPage() {
   const { user } = useAuthStore();
@@ -12,17 +15,19 @@ export function NotesPage() {
   const [videoUrl, setVideoUrl] = useState('');
   const [videoId, setVideoId] = useState('');
   const [transcript, setTranscript] = useState('');
-  const [videoData, setVideoData] = useState<{title: string, description: string} | null>(null);
+  const [videoData, setVideoData] = useState<{ title: string, description: string } | null>(null);
   const [notes, setNotes] = useState('');
   const [error, setError] = useState('');
-  
+  const [viewRaw, setViewRaw] = useState(false);
+
   interface Note {
     id: string;
     videoUrl: string;
+    videoTitle?: string;
     notes: string;
     timestamp: { toDate: () => Date };
   }
-  
+
   const [savedNotes, setSavedNotes] = useState<Note[]>([]);
 
   useEffect(() => {
@@ -35,7 +40,7 @@ export function NotesPage() {
     if (videoUrl) {
       const id = extractVideoId(videoUrl);
       setVideoId(id || '');
-      
+
       if (id) {
         fetchVideoData(id);
       }
@@ -58,17 +63,17 @@ export function NotesPage() {
         console.warn("YouTube API key is missing");
         return;
       }
-      
+
       const response = await fetch(
         `https://www.googleapis.com/youtube/v3/videos?part=snippet&id=${id}&key=${apiKey}`
       );
-      
+
       if (!response.ok) {
         throw new Error("Failed to fetch video data");
       }
-      
+
       const data = await response.json();
-      
+
       if (data.items && data.items.length > 0) {
         const videoDetails = data.items[0].snippet;
         setVideoData({
@@ -93,13 +98,13 @@ export function NotesPage() {
         where("userId", "==", user.uid),
         orderBy("timestamp", "desc")
       );
-      
+
       const querySnapshot = await getDocs(notesQuery);
       const notesData = querySnapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
       })) as Note[];
-      
+
       setSavedNotes(notesData);
     } catch (err) {
       console.error("Error fetching notes:", err);
@@ -120,14 +125,14 @@ export function NotesPage() {
       if (!videoData) {
         await fetchVideoData(videoId);
       }
-      
+
       if (videoData) {
-        const simulatedTranscript = 
+        const simulatedTranscript =
           `Since we don't have a backend server set up for transcript fetching, ` +
           `we're generating notes based on the video metadata.\n\n` +
           `Video Title: ${videoData.title}\n\n` +
-          `Video Description:\n${videoData.description}\n\n` ;
-        
+          `Video Description:\n${videoData.description}\n\n`;
+
         setTranscript(simulatedTranscript);
         return simulatedTranscript;
       } else {
@@ -136,11 +141,11 @@ export function NotesPage() {
     } catch (err) {
       console.error("Error fetching transcript:", err);
       setError("Failed to fetch video transcript. Using available video metadata for note generation.");
-      
-      const fallbackTranscript = 
+
+      const fallbackTranscript =
         "Transcript could not be fetched.\n\n" +
         "For this demonstration, we'll generate notes based on the limited information available about this video.";
-      
+
       setTranscript(fallbackTranscript);
       return fallbackTranscript;
     } finally {
@@ -158,51 +163,59 @@ export function NotesPage() {
       setError("Please log in to generate and save notes");
       return;
     }
-  
+
     setLoading(true);
     setError("");
-  
+
     try {
       let transcriptText = transcript;
-      
+
       if (!transcriptText) {
         setTranscribing(true);
         transcriptText = await fetchTranscript() || "";
         setTranscribing(false);
       }
-      
+
       if (!videoData && videoId) {
         await fetchVideoData(videoId);
       }
-      
+
       const genAI = new GoogleGenerativeAI(import.meta.env.VITE_PUBLIC_GEMINI_API_KEY || '');
       const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
-      
+
       let prompt = `Generate detailed, structured notes from this YouTube video: ${videoUrl}\n\n`;
-      
+
       if (videoData) {
         prompt += `Video Title: ${videoData.title}\n\n`;
         prompt += `Video Description: ${videoData.description}\n\n`;
       }
-      
+
       if (transcriptText) {
         prompt += `Transcript:\n${transcriptText.substring(0, 30000)}\n\n`;
       }
-      
+
       prompt += `
         Create comprehensive, well-organized notes with:
-        1. Main topics and subtopics with clear headings
-        2. Key points and important details under each topic
-        3. Important definitions, concepts, and examples
-        4. A summary of the main takeaways
+        1. Main topics and subtopics with clear headings (use # for main headings, ## for subheadings)
+        2. Key points and important details under each topic (use bullet points with *)
+        3. Important definitions, concepts, and examples (use bold for key terms with **)
+        4. A summary of the main takeaways at the end
         
-        Format the notes in Markdown with proper headings, bullet points, and emphasis.`;
-      
+        Format the notes in proper Markdown with:
+        - Use # for main headings
+        - Use ## and ### for subheadings
+        - Use * or - for bullet points
+        - Use ** for bold text to emphasize important concepts
+        - Use > for quotes or important callouts
+        - Use \`code blocks\` for any code snippets or technical terms
+
+        Ensure the Markdown is clean and properly formatted.`;
+
       const result = await model.generateContent(prompt);
       const response = await result.response;
       const generatedNotes = response.text();
       setNotes(generatedNotes);
-  
+
       await addDoc(collection(db, "notes"), {
         videoUrl: videoUrl,
         videoTitle: videoData?.title || "Unknown Title",
@@ -213,7 +226,7 @@ export function NotesPage() {
       });
 
       await fetchNotes();
-  
+
     } catch (err) {
       setError("Failed to generate notes. Please try again.");
       console.error(err);
@@ -221,7 +234,7 @@ export function NotesPage() {
       setLoading(false);
     }
   };
-  
+
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">
       {!user ? (
@@ -236,7 +249,7 @@ export function NotesPage() {
               <Youtube className="w-6 h-6 text-[#B3D8A8]" />
               <h1 className="text-2xl font-bold text-[#B3D8A8]">Generate Smart Notes</h1>
             </div>
-            
+
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium mb-1 text-[#B3D8A8]">YouTube URL</label>
@@ -248,25 +261,25 @@ export function NotesPage() {
                   className="w-full px-4 py-2 rounded-lg bg-[#B3D8A8]/5 border border-[#B3D8A8]/30 focus:border-[#82A878] focus:outline-none transition-all focus:ring-2 focus:ring-[#B3D8A8]/20"
                 />
               </div>
-              
+
               {videoId && (
                 <div className="bg-[#B3D8A8]/5 p-4 rounded-lg border border-[#B3D8A8]/20">
                   <div className="aspect-video w-full mb-3">
-                    <iframe 
-                      src={`https://www.youtube.com/embed/${videoId}`} 
+                    <iframe
+                      src={`https://www.youtube.com/embed/${videoId}`}
                       className="w-full h-full rounded-lg"
                       allowFullScreen
                       title="YouTube video preview"
                     ></iframe>
                   </div>
-                  
+
                   {videoData && (
                     <div className="mb-4 p-4 rounded-lg bg-[#B3D8A8]/5 border border-[#B3D8A8]/20">
                       <h3 className="font-medium text-[#B3D8A8] mb-1">{videoData.title}</h3>
                       <p className="text-sm text-[#B3D8A8]/70 line-clamp-3">{videoData.description}</p>
                     </div>
                   )}
-                  
+
                   <div className="flex space-x-2">
                     <button
                       onClick={fetchTranscript}
@@ -305,13 +318,13 @@ export function NotesPage() {
                   </div>
                 </div>
               )}
-              
+
               {!videoId && (
                 <button
                   onClick={generateNotes}
                   disabled={loading || !videoUrl}
                   className={`w-full px-6 py-3 rounded-lg font-medium flex items-center justify-center space-x-2 transition-all ${
-                    videoUrl 
+                    videoUrl
                       ? 'bg-gradient-to-r from-[#B3D8A8] to-[#82A878] text-black hover:opacity-90'
                       : 'bg-gray-300 text-gray-600 cursor-not-allowed'
                   }`}
@@ -329,7 +342,7 @@ export function NotesPage() {
                   )}
                 </button>
               )}
-              
+
               {error && (
                 <div className="p-3 rounded bg-red-500/10 border border-red-500 text-red-500">
                   {error}
@@ -349,9 +362,31 @@ export function NotesPage() {
 
           {notes && (
             <div className="bg-[#B3D8A8]/10 backdrop-blur-lg rounded-xl p-6 mb-8 border border-[#B3D8A8]/30 shadow-lg">
-              <h2 className="text-xl font-semibold mb-4 text-[#B3D8A8]">Generated Notes</h2>
-              <div className="prose prose-invert max-w-none">
-                <pre className="whitespace-pre-wrap font-sans">{notes}</pre>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-semibold text-[#B3D8A8]">Generated Notes</h2>
+                <button
+                  onClick={() => setViewRaw(!viewRaw)}
+                  className="text-xs px-2 py-1 rounded bg-[#B3D8A8]/20 text-[#B3D8A8] hover:bg-[#B3D8A8]/30"
+                >
+                  {viewRaw ? "View Formatted" : "View Raw"}
+                </button>
+              </div>
+
+              <div className="bg-[#B3D8A8]/5 rounded-lg border border-[#B3D8A8]/20">
+                {viewRaw ? (
+                  <div className="max-h-[400px] overflow-y-auto p-4 custom-scrollbar">
+                    <pre className="whitespace-pre-wrap font-mono text-sm overflow-x-auto">{notes}</pre>
+                  </div>
+                ) : (
+                  <div className="max-h-[400px] overflow-y-auto p-4 custom-scrollbar markdown-body prose prose-invert prose-headings:text-[#B3D8A8] prose-a:text-[#B3D8A8] max-w-none">
+                    <ReactMarkdown
+                      remarkPlugins={[remarkGfm]}
+                      rehypePlugins={[rehypeRaw]}
+                    >
+                      {notes}
+                    </ReactMarkdown>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -362,12 +397,27 @@ export function NotesPage() {
               <div className="space-y-4">
                 {savedNotes.map((note) => (
                   <div key={note.id} className="p-4 rounded-lg bg-[#B3D8A8]/5 border border-[#B3D8A8]/30 hover:bg-[#B3D8A8]/10 transition-colors">
-                    <p className="text-sm text-[#B3D8A8] mb-2">
-                      {note.timestamp.toDate().toLocaleString()}
-                    </p>
-                    <p className="text-sm text-[#B3D8A8] mb-2">{note.videoUrl}</p>
-                    <div className="max-h-40 overflow-y-auto bg-[#B3D8A8]/5 rounded-lg p-3 border border-[#B3D8A8]/20">
-                      <pre className="whitespace-pre-wrap font-sans text-sm">{note.notes}</pre>
+                    <div className="flex items-center justify-between mb-2">
+                      <h3 className="font-medium text-[#B3D8A8]">
+                        {note.videoTitle || "Notes"}
+                      </h3>
+                      <p className="text-xs text-[#B3D8A8]/70">
+                        {note.timestamp.toDate().toLocaleString()}
+                      </p>
+                    </div>
+                    <p className="text-xs text-[#B3D8A8]/70 mb-2 truncate">{note.videoUrl}</p>
+
+                    <div className="bg-[#B3D8A8]/5 rounded-lg border border-[#B3D8A8]/20">
+                      <div className="h-[200px] overflow-y-auto p-3 custom-scrollbar">
+                        <div className="markdown-body prose prose-invert prose-headings:text-[#B3D8A8] prose-a:text-[#B3D8A8] max-w-none prose-sm">
+                          <ReactMarkdown
+                            remarkPlugins={[remarkGfm]}
+                            rehypePlugins={[rehypeRaw]}
+                          >
+                            {note.notes}
+                          </ReactMarkdown>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 ))}

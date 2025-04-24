@@ -60,3 +60,119 @@
 .animate-spin-smooth {
   animation: spin-smooth 1s linear infinite;
 }
+
+.markdown-body {
+  color: #e2e8f0;
+}
+
+.markdown-body h1 {
+  color: #B3D8A8;
+  font-size: 1.8em;
+  margin-top: 1em;
+  margin-bottom: 0.5em;
+  font-weight: 700;
+  border-bottom: 1px solid #B3D8A8;
+  padding-bottom: 0.3em;
+}
+
+.markdown-body h2 {
+  color: #B3D8A8;
+  font-size: 1.5em;
+  margin-top: 1em;
+  margin-bottom: 0.5em;
+  font-weight: 600;
+}
+
+.markdown-body h3 {
+  color: #B3D8A8;
+  font-size: 1.25em;
+  margin-top: 1em;
+  margin-bottom: 0.5em;
+  font-weight: 600;
+}
+
+.markdown-body ul, .markdown-body ol {
+  padding-left: 1.5em;
+  margin: 0.5em 0;
+}
+
+.markdown-body li {
+  margin: 0.3em 0;
+}
+
+.markdown-body ul > li {
+  list-style-type: disc;
+}
+
+.markdown-body ol > li {
+  list-style-type: decimal;
+}
+
+.markdown-body blockquote {
+  border-left: 3px solid #B3D8A8;
+  padding-left: 1em;
+  color: #CBD5E0;
+  margin: 0.5em 0;
+}
+
+.markdown-body code {
+  background: rgba(179, 216, 168, 0.1);
+  padding: 0.1em 0.3em;
+  border-radius: 3px;
+  font-family: monospace;
+}
+
+.markdown-body pre {
+  background: rgba(179, 216, 168, 0.1);
+  padding: 1em;
+  border-radius: 6px;
+  overflow-x: auto;
+}
+
+.markdown-body strong {
+  color: #ffffff;
+  font-weight: 700;
+}
+
+.markdown-body a {
+  color: #B3D8A8;
+  text-decoration: underline;
+}
+
+.markdown-body table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1em 0;
+}
+
+.markdown-body th, .markdown-body td {
+  border: 1px solid rgba(179, 216, 168, 0.3);
+  padding: 0.5em;
+}
+
+.markdown-body th {
+  background: rgba(179, 216, 168, 0.1);
+}
+
+.custom-scrollbar {
+  scrollbar-width: thin; /* Firefox */
+  scrollbar-color: rgba(179, 216, 168, 0.5) rgba(179, 216, 168, 0.1); /* Firefox */
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 8px; /* Chrome, Safari, Edge */
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: rgba(179, 216, 168, 0.1); /* Chrome, Safari, Edge */
+  border-radius: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(179, 216, 168, 0.5); /* Chrome, Safari, Edge */
+  border-radius: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(179, 216, 168, 0.7); /* Chrome, Safari, Edge */
+}
