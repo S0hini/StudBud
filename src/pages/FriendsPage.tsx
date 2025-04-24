@@ -10,12 +10,14 @@ import {
   arrayRemove, 
   orderBy, 
   getDoc,
-  writeBatch
+  writeBatch,
+  addDoc
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuthStore } from '../lib/store';
-import { Search, UserPlus, UserMinus, Send, MessageCircle, X, Users, ChevronLeft } from 'lucide-react';
+import { Search, UserPlus, UserMinus, Send, MessageCircle, X, Users, ChevronLeft, Swords } from 'lucide-react';
 import { Chat } from '../components/Chat';
+import { useNavigate } from 'react-router-dom';
 
 interface User {
   id: string;
@@ -39,7 +41,9 @@ export function FriendsPage() {
   const [selectedFriend, setSelectedFriend] = useState<{ id: string; name: string; photoURL?: string } | null>(null);
   const [viewMode, setViewMode] = useState<'friends' | 'chat'>('friends');
   const [filter, setFilter] = useState<'all' | 'friends' | 'pending' | 'received'>('all');
+  const [pendingChallenges, setPendingChallenges] = useState<string[]>([]);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const navigate = useNavigate();
 
   useEffect(() => {
     const fetchUsers = async () => {
@@ -111,6 +115,31 @@ export function FriendsPage() {
     fetchUsers();
   }, [user]);
 
+  useEffect(() => {
+    const fetchBattles = async () => {
+      if (!currentUserData) return;
+      
+      try {
+        const battlesRef = collection(db, 'battles');
+        const q = query(
+          battlesRef,
+          where('challenger.id', '==', currentUserData.id),
+          where('status', '==', 'pending')
+        );
+        
+        const snapshot = await getDocs(q);
+        const pendingIds = snapshot.docs.map(doc => doc.data().opponent.id);
+        setPendingChallenges(pendingIds);
+      } catch (error) {
+        console.error('Error fetching pending battles:', error);
+      }
+    };
+    
+    if (currentUserData) {
+      fetchBattles();
+    }
+  }, [currentUserData]);
+
   const toggleFriend = async (friendId: string) => {
     if (!currentUserData) return;
 
@@ -175,6 +204,53 @@ export function FriendsPage() {
       }
     } catch (err) {
       console.error('Error updating friend status:', err);
+    }
+  };
+
+  const challengeFriend = async (friendId: string, friendName: string) => {
+    if (!currentUserData) return;
+    
+    try {
+      // Create a new battle in Firestore
+      const battleData = {
+        createdAt: new Date(),
+        status: 'pending',
+        challenger: {
+          id: currentUserData.id,
+          name: currentUserData.displayName,
+          photoURL: currentUserData.photoURL,
+        },
+        opponent: {
+          id: friendId,
+          name: friendName,
+          photoURL: users.find(u => u.id === friendId)?.photoURL,
+        },
+        scores: {
+          [currentUserData.id]: 0,
+          [friendId]: 0
+        }
+      };
+      
+      // Add to the battles collection
+      const battleRef = await addDoc(collection(db, 'battles'), battleData);
+      
+      // Notify the friend about the challenge via their notifications collection
+      await addDoc(collection(db, 'users', friendId, 'notifications'), {
+        type: 'challenge',
+        senderId: currentUserData.id,
+        senderName: currentUserData.displayName,
+        battleId: battleRef.id,
+        read: false,
+        createdAt: new Date()
+      });
+      
+      // Add to pending challenges state
+      setPendingChallenges(prev => [...prev, friendId]);
+      
+      // Navigate to the quiz battle page
+      navigate(`/quiz-battle/${battleRef.id}`);
+    } catch (err) {
+      console.error('Error challenging friend:', err);
     }
   };
 
@@ -384,11 +460,16 @@ export function FriendsPage() {
                             {isFriend && (
                               <>
                                 <button
-                                  onClick={() => {/* Challenge friend logic */}}
-                                  className="p-2 rounded-lg bg-pink-500/10 text-pink-500 hover:bg-pink-500/20 transition-colors"
-                                  title="Challenge"
+                                  onClick={() => challengeFriend(userData.id, userData.displayName)}
+                                  disabled={pendingChallenges.includes(userData.id)}
+                                  className={`p-2 rounded-lg transition-colors ${
+                                    pendingChallenges.includes(userData.id)
+                                      ? "bg-gray-700/30 text-gray-500 cursor-not-allowed" 
+                                      : "bg-orange-500/10 text-orange-500 hover:bg-orange-500/20"
+                                  }`}
+                                  title={pendingChallenges.includes(userData.id) ? "Challenge Pending" : "Challenge to Quiz Battle"}
                                 >
-                                  <Send className="w-4 h-4 md:w-5 md:h-5" />
+                                  <Swords className="w-4 h-4 md:w-5 md:h-5" />
                                 </button>
                                 <button
                                   onClick={() => openChat(userData)}

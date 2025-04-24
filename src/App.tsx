@@ -16,6 +16,7 @@ import { ProfilePage } from './pages/ProfilePage';
 import QuizPage from './pages/QuizPage'; // Import the new QuizPage
 import { LoginPage } from './pages/LoginPage'; // Import the updated LoginPage
 import { Spinner } from './components/Spinner'; // Import the Spinner component
+import { QuizBattlePage } from './pages/QuizBattlePage'; // Add this import
 
 export function App() {
   const { user, loading } = useAuthStore();
@@ -80,6 +81,11 @@ export function App() {
                   <ProfilePage />
                 </ProtectedRoute>
               } />
+              <Route path="/quiz-battle/:battleId" element={
+                <ProtectedRoute>
+                  <QuizBattlePage />
+                </ProtectedRoute>
+              } /> {/* Add this route */}
             </Routes>
           </div>
           <Footer />
