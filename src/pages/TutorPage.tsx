@@ -1,40 +1,19 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Send, Bot, User, Loader } from 'lucide-react';
-import { GoogleGenerativeAI } from "@google/generative-ai";
 import { db } from '../lib/firebase';
 import { useAuthStore } from '../lib/store';
 import { collection, addDoc, query, where, orderBy, onSnapshot, serverTimestamp } from 'firebase/firestore';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-
-// Safety check for API key
-const apiKey = import.meta.env.VITE_PUBLIC_GEMINI_API_KEY;
-if (!apiKey) {
-  console.error('Missing Gemini API key');
-  throw new Error('VITE_PUBLIC_GEMINI_API_KEY is not defined');
-}
-
-// Initialize the API with the correct model name and version
-const genAI = new GoogleGenerativeAI(apiKey);
-// Use gemini-1.5-pro or gemini-1.5-flash instead of gemini-pro
-const model = genAI.getGenerativeModel({ 
-  model: "gemini-1.5-pro",  // Updated to use the current model name
-  generationConfig: {
-    temperature: 0.7,
-    topK: 40,
-    topP: 0.95,
-    maxOutputTokens: 2048,
-  },
-});
+import { generateContent } from '../lib/gemini'; // Import Groq API wrapper
 
 interface Message {
   role: 'user' | 'assistant';
   content: string;
   timestamp: any;
-  id?: string;  // Added id to the interface
+  id?: string;
 }
 
-// Update the formatMessage function to use HTML bold tags
 const formatMessage = (text: string) => {
   return text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
 };
@@ -54,7 +33,6 @@ export function TutorPage() {
     if (!user) return;
 
     try {
-      // Query the firestore collection
       const q = query(
         collection(db, 'tutorChats'),
         where('userId', '==', user.uid),
@@ -105,11 +83,10 @@ export function TutorPage() {
     setInput('');
     setLoading(true);
     setIsThinking(true);
-    setShowQuizPrompt(false); // Hide any existing quiz prompt
-    setLastTopic(userMessage); // Store the topic
+    setShowQuizPrompt(false);
+    setLastTopic(userMessage);
 
     try {
-      // Save user message first
       await addDoc(collection(db, 'tutorChats'), {
         userId: user.uid,
         content: userMessage,
@@ -118,23 +95,12 @@ export function TutorPage() {
       });
 
       try {
-        // Format chat history correctly
+        // Prepare chat history for Groq
         const chatHistory = messages.map(msg => ({
-          role: msg.role === 'assistant' ? 'model' : 'user',
-          parts: [{ text: msg.content }]
+          role: msg.role,
+          content: msg.content
         }));
 
-        const chat = model.startChat({
-          history: chatHistory,
-          generationConfig: {
-            temperature: 0.7,
-            topK: 40,
-            topP: 0.95,
-            maxOutputTokens: 2048,
-          }
-        });
-
-        // Create the formatted template with the user's message
         const templatePrompt = `Please explain the topic: "${userMessage}"
 Use bold text with markdown formatting (e.g., **word**) for important terms.
 Provide a comprehensive explanation in the following format:
@@ -158,16 +124,9 @@ Provide a comprehensive explanation in the following format:
 [Brief summary highlighting **key terms** and main points]
 Remember to use **bold** formatting (with double asterisks) for important terms and concepts throughout the explanation.`;
 
-        // Send the template prompt instead of just the user message
-        const result = await chat.sendMessage([
-          {
-            text: templatePrompt
-          }
-        ]);
-        
-        const aiMessage = await result.response.text();
+        // Call Groq API
+        const aiMessage = await generateContent(templatePrompt, chatHistory);
 
-        // Save AI response
         await addDoc(collection(db, 'tutorChats'), {
           userId: user.uid,
           content: aiMessage,
@@ -175,10 +134,9 @@ Remember to use **bold** formatting (with double asterisks) for important terms 
           timestamp: serverTimestamp()
         });
 
-        // After successfully getting the AI response
-        setShowQuizPrompt(true); // Show the quiz prompt
+        setShowQuizPrompt(true);
       } catch (error) {
-        console.error('Gemini API Error:', error);
+        console.error('Groq API Error:', error);
         throw error;
       }
     } catch (err) {
@@ -260,6 +218,7 @@ Remember to use **bold** formatting (with double asterisks) for important terms 
                   </div>
                 </div>
               )}
+              <div ref={messagesEndRef} />
             </div>
 
             <div className="flex items-center space-x-2">

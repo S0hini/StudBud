@@ -1,14 +1,11 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
-
-const apiKey = import.meta.env.VITE_QUIZ_GEMINI_API_KEY;
+const apiKey = import.meta.env.VITE_PUBLIC_GROQ_API_KEY;
 
 if (!apiKey) {
-  throw new Error("VITE_QUIZ_GEMINI_API_KEY is not defined in environment variables");
+  throw new Error("VITE_PUBLIC_GROQ_API_KEY is not defined in environment variables");
 }
 
-const genAI = new GoogleGenerativeAI(apiKey);
-// Using the latest available model
-const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
+const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
+const MODEL_NAME = "llama3-70b-8192"; // Or your preferred Groq model
 
 export const getQuizQuestions = async (
   course: string,
@@ -19,65 +16,96 @@ export const getQuizQuestions = async (
     const prompt = `
       Generate 10 multiple-choice questions (MCQs) on "${topic}" related to "${course}" 
       for the "${level}" level. Each question should have exactly 4 options, one correct answer, 
-      and a brief explanation of why that answer is correct. Format the output as a valid JSON array like this:
+      and a brief explanation of why that answer is correct.
 
+      Respond ONLY with a valid JSON array, no preamble, no explanation, no markdown, no text before or after the JSON. 
+      Each object must have "question", "options", "answer", and "explanation" fields.
+
+      Example:
       [
         {
-          "question": "What is the primary key in RDBMS?",
-          "options": ["Unique identifier", "Foreign key", "Primary storage", "Database schema"],
-          "answer": "Unique identifier",
-          "explanation": "A primary key is a unique identifier that distinguishes each record in a database table. Unlike foreign keys that reference other tables, primary storage that refers to physical storage, or database schemas that define the structure, primary keys uniquely identify each row."
-        },
-        ...
+          "question": "What is ...?",
+          "options": ["A", "B", "C", "D"],
+          "answer": "A",
+          "explanation": "..."
+        }
       ]
-
-      Ensure the explanation is educational and helps the student understand why the answer is correct.
-      Ensure the response contains only valid JSON without any extra text or explanations outside the JSON structure.
     `;
 
-    const result = await model.generateContent(prompt);
-    const responseText = await result.response.text();
-    
-    console.log("Raw API response:", responseText); // For debugging
-    
-    // Try to extract just the JSON part if there's any extra text
+    const messages = [
+      { role: "user", content: prompt }
+    ];
+
+    const response = await fetch(GROQ_API_URL, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        model: MODEL_NAME,
+        messages,
+        max_tokens: 2048
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`Groq API error: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    const responseText = data.choices?.[0]?.message?.content || "";
+
+    // Extract JSON array from the response
     let jsonContent = responseText;
     try {
-      // Find the first [ and last ] to extract just the JSON array
+      // Find the first '[' and last ']'
       const startIndex = responseText.indexOf('[');
       const endIndex = responseText.lastIndexOf(']') + 1;
-      
+
       if (startIndex >= 0 && endIndex > startIndex) {
         jsonContent = responseText.substring(startIndex, endIndex);
       }
-      
-      const quizData = JSON.parse(jsonContent);
-      
-      // Validate that the structure is correct
+
+      // Try parsing, if fails, try to fix common issues
+      let quizData;
+      try {
+        quizData = JSON.parse(jsonContent);
+      } catch (e) {
+        // Attempt to fix common JSON issues
+        jsonContent = jsonContent
+          .replace(/,\s*}/g, '}') // Remove trailing commas before }
+          .replace(/,\s*]/g, ']') // Remove trailing commas before ]
+          .replace(/(\r\n|\n|\r)/gm, ""); // Remove newlines
+
+        // Fix missing "answer" keys (very basic, for this specific error)
+        jsonContent = jsonContent.replace(/("options":\s*\[[^\]]+\],)\s*("[^"]+",)/g, '$1 "answer": $2');
+
+        quizData = JSON.parse(jsonContent);
+      }
+
       if (!Array.isArray(quizData)) {
         throw new Error("Response is not an array");
       }
-      
-      // Validate each question has the required fields
+
       const validatedData = quizData.map((q, index) => {
         if (!q.question || !Array.isArray(q.options) || !q.answer) {
           console.error(`Invalid question at index ${index}:`, q);
           throw new Error(`Question at index ${index} has invalid format`);
         }
-        
-        // Ensure there's an explanation, or create a default one
+
         if (!q.explanation) {
           q.explanation = `The correct answer is "${q.answer}". This is an important concept in ${topic} for ${level} level ${course}.`;
         }
-        
+
         return q;
       });
-      
+
       return { questions: validatedData };
     } catch (parseError) {
-      console.error("Error parsing Gemini response:", parseError);
+      console.error("Error parsing Groq response:", parseError);
       console.error("Raw response:", responseText);
-      throw new Error("Failed to parse response from Gemini API");
+      throw new Error("Failed to parse response from Groq API");
     }
   } catch (error) {
     console.error("Error fetching quiz questions:", error);

@@ -1,39 +1,51 @@
-// lib/gemini.js
-import { GoogleGenerativeAI } from "@google/generative-ai";
-
-// For Vite, we use import.meta.env instead of process.env
-const apiKey = import.meta.env.VITE_PUBLIC_GEMINI_API_KEY;
+// lib/groq.ts
+const apiKey = import.meta.env.VITE_PUBLIC_GROQ_API_KEY;
 
 if (!apiKey) {
-  throw new Error('VITE_PUBLIC_GEMINI_API_KEY is not defined in environment variables');
+  throw new Error('VITE_PUBLIC_GROQ_API_KEY is not defined in environment variables');
 }
 
-// Initialize the Google Generative AI with your API key
-const genAI = new GoogleGenerativeAI(apiKey);
+const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
+const MODEL_NAME = "llama3-70b-8192"; // Change to your preferred Groq model
 
-// Initialize the model
-const model = genAI.getGenerativeModel({ model: "gemini-pro" });
-
-// Create a chat instance
+// Start a chat (returns initial history structure)
 const startChat = async () => {
-  const chat = model.startChat({
+  return {
     history: [],
-    generationConfig: {
-      maxOutputTokens: 2048,
-    },
-  });
-  return chat;
+  };
 };
 
-// Generate content using the model
-const generateContent = async (prompt:"You are a chatbot who fetches info from youtube link and shows it") => {
+// Generate content using the Groq API
+const generateContent = async (prompt: string, history: any[] = []) => {
   try {
-    const result = await model.generateContent(prompt);
-    return result;
+    const messages = [
+      ...history,
+      { role: "user", content: prompt }
+    ];
+
+    const response = await fetch(GROQ_API_URL, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        model: MODEL_NAME,
+        messages,
+        max_tokens: 2048
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`Groq API error: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    return data.choices?.[0]?.message?.content || "";
   } catch (error) {
     console.error("Error generating content:", error);
     throw error;
   }
 };
 
-export { model, startChat, generateContent };
+export { startChat, generateContent };
