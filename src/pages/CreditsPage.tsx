@@ -67,20 +67,32 @@ export function CreditsPage() {
       
       {/* Animated floating shapes */}
       <div className="fixed inset-0 -z-10 overflow-hidden">
-        {[...Array(6)].map((_, i) => (
-          <div key={i} 
-               className="absolute rounded-full opacity-20" 
-               style={{
-                 top: `${Math.random() * 100}%`,
-                 left: `${Math.random() * 100}%`,
-                 width: `${Math.random() * 200 + 100}px`,
-                 height: `${Math.random() * 200 + 100}px`,
-                 background: i % 2 === 0 ? 'radial-gradient(circle, rgba(120, 20, 255, 0.3), transparent)' : 'radial-gradient(circle, rgba(255, 20, 180, 0.3), transparent)',
-                 animation: `float ${Math.random() * 20 + 10}s infinite ease-in-out alternate`,
-                 animationDelay: `${i * 0.5}s`
-               }}>
-          </div>
-        ))}
+        {[...Array(6)].map((_, i) => {
+          const duration = Math.random() * 20 + 10;
+          const delay = i * 0.5;
+          return (
+            <div
+              key={i}
+              className="absolute rounded-full opacity-20"
+              style={{
+                top: `${Math.random() * 100}%`,
+                left: `${Math.random() * 100}%`,
+                width: `${Math.random() * 200 + 100}px`,
+                height: `${Math.random() * 200 + 100}px`,
+                background:
+                  i % 2 === 0
+                    ? 'radial-gradient(circle, rgba(120, 20, 255, 0.3), transparent)'
+                    : 'radial-gradient(circle, rgba(255, 20, 180, 0.3), transparent)',
+                animationName: 'float',
+                animationDuration: `${duration}s`,
+                animationIterationCount: 'infinite',
+                animationTimingFunction: 'ease-in-out',
+                animationDirection: 'alternate',
+                animationDelay: `${delay}s`
+              }}
+            />
+          );
+        })}
       </div>
 
       {/* Credit Balance - Apple-style component with animation */}
