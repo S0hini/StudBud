@@ -6,7 +6,7 @@ if (!apiKey) {
 }
 
 const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
-const MODEL_NAME = "llama3-70b-8192"; // Change to your preferred Groq model
+const MODEL_NAME = "openai/gpt-oss-120b"; // Stable default Groq model
 
 // Start a chat (returns initial history structure)
 const startChat = async () => {
@@ -37,7 +37,10 @@ const generateContent = async (prompt: string, history: any[] = []) => {
     });
 
     if (!response.ok) {
-      throw new Error(`Groq API error: ${response.statusText}`);
+      const errorText = await response.text();
+      throw new Error(
+        `Groq API error: ${response.status} ${response.statusText}${errorText ? ` - ${errorText}` : ''}`
+      );
     }
 
     const data = await response.json();

@@ -1,7 +1,39 @@
-import React from 'react';
+import { useEffect } from 'react';
 import { Github, Twitter, Linkedin } from 'lucide-react';
 
+const isValidChannelId = (value: string) => /^UC[a-zA-Z0-9_-]{22}$/.test(value);
+
+const fetchActivities = async (apiKey: string, channelId: string) => {
+  try {
+    const response = await fetch(
+      `https://www.googleapis.com/youtube/v3/activities?part=snippet,contentDetails&channelId=${channelId}&maxResults=5&key=${apiKey}`
+    );
+
+    const data = await response.json();
+    if (!response.ok) {
+      console.error("Error fetching activities:", data);
+      return;
+    }
+
+    console.log("Activities:", data);
+  } catch (error) {
+    console.error("Error fetching activities:", error);
+  }
+};
+
 export function Footer() {
+  useEffect(() => {
+    const apiKey = import.meta.env.VITE_YOUTUBE_API_KEY;
+    const channelId = import.meta.env.VITE_YOUTUBE_CHANNEL_ID;
+
+    if (!apiKey || !channelId || !isValidChannelId(channelId)) {
+      console.warn("YouTube API key or channel ID is missing or invalid");
+      return;
+    }
+
+    void fetchActivities(apiKey, channelId);
+  }, []);
+
   return (
     <footer className="w-full bg-black">
       <div className="max-w-7xl mx-auto px-4 py-12">
@@ -58,26 +90,3 @@ export function Footer() {
     </footer>
   );
 }
-
-// Example using fetch to call the YouTube Data API v3
-const fetchActivities = async () => {
-  const apiKey = import.meta.env.VITE_YOUTUBE_API_KEY;
-  const oauthToken = import.meta.env.VITE_YOUTUBE_OAUTH_TOKEN;
-
-  const response = await fetch(`https://www.googleapis.com/youtube/v3/activities?part=snippet,contentDetails&mine=true&key=${apiKey}`, {
-    headers: {
-      'Authorization': `Bearer ${oauthToken}`
-    }
-  });
-
-  if (!response.ok) {
-    const errorData = await response.json();
-    console.error("Error fetching activities:", errorData);
-    return;
-  }
-
-  const data = await response.json();
-  console.log("Activities:", data);
-};
-
-fetchActivities();
