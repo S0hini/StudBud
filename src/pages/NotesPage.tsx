@@ -570,7 +570,7 @@ Ensure all text is in fluent English with proper Markdown and LaTeX formatting.`
                   <div className="max-h-[400px] overflow-y-auto p-4 custom-scrollbar markdown-body prose prose-invert prose-headings:text-[#B3D8A8] prose-a:text-[#B3D8A8] max-w-none">
                     <ReactMarkdown
                       remarkPlugins={[remarkGfm, remarkMath]}
-                      rehypePlugins={[rehypeRaw, rehypeKatex]}
+                      rehypePlugins={[rehypeRaw, [rehypeKatex, { strict: false, throwOnError: false }]]}
                     >
                       {formatMathExpressions(notes)}
                     </ReactMarkdown>

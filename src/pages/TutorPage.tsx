@@ -37,8 +37,7 @@ export function TutorPage() {
     try {
       const q = query(
         collection(db, 'tutorChats'),
-        where('userId', '==', user.uid),
-        orderBy('timestamp', 'asc')
+        where('userId', '==', user.uid)
       );
 
       const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -52,26 +51,36 @@ export function TutorPage() {
             timestamp: data.timestamp
           });
         });
-        setMessages(newMessages);
+
+        // In-memory sort by timestamp to avoid requiring a composite index in Firestore
+        newMessages.sort((a, b) => {
+          const timeA = a.timestamp?.toMillis ? a.timestamp.toMillis() : (a.timestamp ? new Date(a.timestamp).getTime() : 0);
+          const timeB = b.timestamp?.toMillis ? b.timestamp.toMillis() : (b.timestamp ? new Date(b.timestamp).getTime() : 0);
+          return timeA - timeB;
+        });
+
+        if (newMessages.length > 0) {
+          setMessages(newMessages);
+        }
       }, (error) => {
-        console.error("Error in snapshot listener:", error);
+        console.warn("Firestore snapshot listener warning:", error);
       });
 
       return () => unsubscribe();
     } catch (error) {
-      console.error("Error setting up listener:", error);
+      console.warn("Error setting up listener:", error);
     }
   }, [user]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  }, [messages, isThinking]);
 
   const handleQuizRedirect = () => {
     const words = lastTopic.trim().split(/\s+/);
     navigate('/quiz', { 
       state: { 
-        course: words.length > 1 ? words[0] : "",
+        course: words.length > 1 ? words[0] : "General",
         topic: words.length > 1 ? words.slice(1).join(" ") : words[0],
         fromTutor: true
       } 
@@ -79,7 +88,7 @@ export function TutorPage() {
   };
 
   const sendMessage = async () => {
-    if (!input.trim() || !user || loading) return;
+    if (!input.trim() || loading) return;
 
     const userMessage = input.trim();
     setInput('');
@@ -88,22 +97,32 @@ export function TutorPage() {
     setShowQuizPrompt(false);
     setLastTopic(userMessage);
 
-    try {
-      await addDoc(collection(db, 'tutorChats'), {
+    // Optimistically update local message state
+    const userMsgObj: Message = {
+      role: 'user',
+      content: userMessage,
+      timestamp: new Date()
+    };
+    setMessages((prev) => [...prev, userMsgObj]);
+
+    // Save to Firestore in background if logged in
+    if (user) {
+      addDoc(collection(db, 'tutorChats'), {
         userId: user.uid,
         content: userMessage,
         role: 'user',
         timestamp: serverTimestamp()
-      });
+      }).catch((e) => console.warn('Firestore write user message warning:', e));
+    }
 
-      try {
-        // Prepare chat history for Groq
-        const chatHistory = messages.map(msg => ({
-          role: msg.role,
-          content: msg.content
-        }));
+    try {
+      // Prepare chat history for AI
+      const chatHistory = messages.map(msg => ({
+        role: msg.role,
+        content: msg.content
+      }));
 
-        const templatePrompt = `Please explain the topic: "${userMessage}" in ENGLISH.
+      const templatePrompt = `Please explain the topic: "${userMessage}" in ENGLISH.
 Use bold text with markdown formatting (e.g., **word**) for important terms.
 For any mathematical formulas, equations, or limits, always format with LaTeX delimiters:
 - Inline math: $a^{\\infty}$, $\\lim_{x \\to a} f(x)$, $0^0$, $\\infty^0$
@@ -129,29 +148,33 @@ Provide a comprehensive explanation in the following format:
 ✨ **SUMMARY:**
 [Brief summary highlighting **key terms** and main points]`;
 
-        // Call Groq API
-        const aiMessage = await generateContent(templatePrompt, chatHistory);
+      const aiMessage = await generateContent(templatePrompt, chatHistory);
 
-        await addDoc(collection(db, 'tutorChats'), {
+      const assistantMsgObj: Message = {
+        role: 'assistant',
+        content: aiMessage,
+        timestamp: new Date()
+      };
+      setMessages((prev) => [...prev, assistantMsgObj]);
+
+      if (user) {
+        addDoc(collection(db, 'tutorChats'), {
           userId: user.uid,
           content: aiMessage,
           role: 'assistant',
           timestamp: serverTimestamp()
-        });
-
-        setShowQuizPrompt(true);
-      } catch (error) {
-        console.error('Groq API Error:', error);
-        throw error;
+        }).catch((e) => console.warn('Firestore write assistant message warning:', e));
       }
-    } catch (err) {
-      console.error('Overall Error:', err);
-      await addDoc(collection(db, 'tutorChats'), {
-        userId: user.uid,
-        content: "Sorry, I encountered an error. Please try again.",
+
+      setShowQuizPrompt(true);
+    } catch (err: any) {
+      console.error('Tutor error:', err);
+      const errorMsgObj: Message = {
         role: 'assistant',
-        timestamp: serverTimestamp()
-      });
+        content: "I encountered an error trying to process that question. Please make sure your network and AI API keys are configured properly, or try asking in different words.",
+        timestamp: new Date()
+      };
+      setMessages((prev) => [...prev, errorMsgObj]);
     } finally {
       setLoading(false);
       setIsThinking(false);
@@ -202,7 +225,7 @@ Provide a comprehensive explanation in the following format:
                           <div className="markdown-body prose prose-invert prose-headings:text-[#B3D8A8] prose-a:text-[#B3D8A8] max-w-none prose-sm">
                             <ReactMarkdown
                               remarkPlugins={[remarkGfm, remarkMath]}
-                              rehypePlugins={[rehypeRaw, rehypeKatex]}
+                              rehypePlugins={[rehypeRaw, [rehypeKatex, { strict: false, throwOnError: false }]]}
                             >
                               {formatMathExpressions(message.content)}
                             </ReactMarkdown>

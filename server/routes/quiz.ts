@@ -6,7 +6,7 @@ export const quizRouter = Router();
 // POST /api/quiz/generate
 quizRouter.post('/generate', async (req: Request, res: Response) => {
   try {
-    const { course, topic, level, count = 10 } = req.body;
+    const { course, topic, level, count = 8 } = req.body;
 
     if (!course || !topic || !level) {
       return res.status(400).json({ error: 'course, topic, and level are required fields' });
@@ -15,24 +15,21 @@ quizRouter.post('/generate', async (req: Request, res: Response) => {
     const groqKey = process.env.VITE_PUBLIC_GROQ_API_KEY || process.env.GROQ_API_KEY;
     const geminiKey = process.env.VITE_PUBLIC_GEMINI_API_KEY || process.env.GEMINI_API_KEY;
 
-    const prompt = `
-Generate ${count} multiple-choice questions (MCQs) on "${topic}" related to "${course}" 
-for the "${level}" level. Each question should have exactly 4 options, one correct answer (matching one of the option strings or option letter), 
-and a brief explanation of why that answer is correct.
+    const prompt = `Generate ${count} multiple-choice questions (MCQs) on "${topic}" related to "${course}" for the "${level}" difficulty level.
+Each question must have exactly 4 options.
+For the "answer" field, specify the EXACT string matching one of the options in the "options" array.
+For any mathematical formulas or symbols, format cleanly with LaTeX delimiters (e.g. \\lim_{x \\to 0} \\frac{\\sin x}{x}, x^2, \\infty).
+Keep explanations concise (1-2 sentences).
 
-Respond ONLY with a valid JSON array, no preamble, no markdown backticks, no text before or after the JSON.
-Each object must have "question", "options" (array of 4 strings), "answer" (string), and "explanation" (string) fields.
-
-Example structure:
+Respond ONLY with a valid JSON array:
 [
   {
     "question": "What is ...?",
-    "options": ["Option A", "Option B", "Option C", "Option D"],
-    "answer": "Option A",
-    "explanation": "Option A is correct because..."
+    "options": ["Option 1", "Option 2", "Option 3", "Option 4"],
+    "answer": "Option 1",
+    "explanation": "Brief explanation."
   }
-]
-`;
+]`;
 
     let rawText = '';
 
@@ -49,7 +46,7 @@ Example structure:
             body: JSON.stringify({
               model: groqModel,
               messages: [{ role: 'user', content: prompt }],
-              max_tokens: 3000
+              max_tokens: 4096
             })
           });
 
@@ -66,7 +63,7 @@ Example structure:
 
     if (!rawText && geminiKey) {
       const genAI = new GoogleGenerativeAI(geminiKey);
-      const candidateModels = ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-2.5-flash", "gemini-1.5-pro-latest", "gemini-pro"];
+      const candidateModels = ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-2.5-flash", "gemini-1.5-pro", "gemini-pro"];
       for (const modelName of candidateModels) {
         try {
           const model = genAI.getGenerativeModel({ model: modelName });
@@ -87,36 +84,54 @@ Example structure:
     }
 
     // Clean JSON content
-    let jsonContent = rawText.trim();
+    let jsonContent = rawText.replace(/```json/gi, '').replace(/```/g, '').trim();
     const startIndex = jsonContent.indexOf('[');
-    const endIndex = jsonContent.lastIndexOf(']') + 1;
+    const endIndex = jsonContent.lastIndexOf(']');
 
     if (startIndex >= 0 && endIndex > startIndex) {
-      jsonContent = jsonContent.substring(startIndex, endIndex);
+      jsonContent = jsonContent.substring(startIndex, endIndex + 1);
     }
 
     let parsedQuestions: any[] = [];
     try {
       parsedQuestions = JSON.parse(jsonContent);
     } catch {
-      // Fallback cleanup
-      const cleaned = jsonContent
-        .replace(/,\s*}/g, '}')
-        .replace(/,\s*]/g, ']')
-        .replace(/(\r\n|\n|\r)/gm, ' ');
-      parsedQuestions = JSON.parse(cleaned);
+      const objectRegex = /\{\s*"question"[\s\S]*?"explanation"\s*:\s*"(?:[^"\\]|\\.)*"\s*\}/g;
+      const matches = jsonContent.match(objectRegex);
+      if (matches && matches.length > 0) {
+        parsedQuestions = matches.map((m) => {
+          try { return JSON.parse(m); } catch { return null; }
+        }).filter(Boolean);
+      }
     }
 
-    if (!Array.isArray(parsedQuestions)) {
+    if (!Array.isArray(parsedQuestions) || parsedQuestions.length === 0) {
       throw new Error('Response is not a valid question array');
     }
 
-    const validated = parsedQuestions.map((q, idx) => ({
-      question: q.question || `Question ${idx + 1}`,
-      options: Array.isArray(q.options) ? q.options : ['A', 'B', 'C', 'D'],
-      answer: q.answer || (Array.isArray(q.options) ? q.options[0] : 'A'),
-      explanation: q.explanation || `The correct answer is "${q.answer}". Important concept in ${topic} for ${level} level.`
-    }));
+    const validated = parsedQuestions.map((q, idx) => {
+      const options = Array.isArray(q.options) ? q.options.map((o: any) => String(o).trim()) : ['A', 'B', 'C', 'D'];
+      let rawAnswer = String(q.answer || '').trim();
+      let finalAnswer = options[0];
+
+      const letterMatch = rawAnswer.match(/^(?:Option\s*)?([A-D])(?:\b|\))/i);
+      if (letterMatch) {
+        const letterIdx = letterMatch[1].toUpperCase().charCodeAt(0) - 65;
+        if (letterIdx >= 0 && letterIdx < options.length) {
+          finalAnswer = options[letterIdx];
+        }
+      } else {
+        const exact = options.find((o) => o.toLowerCase() === rawAnswer.toLowerCase());
+        if (exact) finalAnswer = exact;
+      }
+
+      return {
+        question: q.question || `Question ${idx + 1}`,
+        options: options.slice(0, 4),
+        answer: finalAnswer,
+        explanation: q.explanation || `The correct answer is "${finalAnswer}". Important concept in ${topic} for ${level} level.`
+      };
+    });
 
     return res.json({
       success: true,

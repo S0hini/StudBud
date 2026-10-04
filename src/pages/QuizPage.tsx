@@ -451,7 +451,7 @@ export function QuizPage() {
                     <div className="flex-1 text-base sm:text-lg font-semibold text-white markdown-body prose prose-invert max-w-none">
                       <ReactMarkdown
                         remarkPlugins={[remarkGfm, remarkMath]}
-                        rehypePlugins={[rehypeRaw, rehypeKatex]}
+                        rehypePlugins={[rehypeRaw, [rehypeKatex, { strict: false, throwOnError: false }]]}
                       >
                         {formatMathExpressions(q.question)}
                       </ReactMarkdown>
@@ -489,7 +489,7 @@ export function QuizPage() {
                           <div className="flex-1 text-sm font-medium markdown-body prose prose-invert max-w-none">
                             <ReactMarkdown
                               remarkPlugins={[remarkGfm, remarkMath]}
-                              rehypePlugins={[rehypeRaw, rehypeKatex]}
+                              rehypePlugins={[rehypeRaw, [rehypeKatex, { strict: false, throwOnError: false }]]}
                             >
                               {formatMathExpressions(option)}
                             </ReactMarkdown>
@@ -538,7 +538,7 @@ export function QuizPage() {
                           >
                             <ReactMarkdown
                               remarkPlugins={[remarkGfm, remarkMath]}
-                              rehypePlugins={[rehypeRaw, rehypeKatex]}
+                              rehypePlugins={[rehypeRaw, [rehypeKatex, { strict: false, throwOnError: false }]]}
                             >
                               {formatMathExpressions(q.explanation)}
                             </ReactMarkdown>

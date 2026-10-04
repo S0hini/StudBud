@@ -59,7 +59,15 @@ const router = createBrowserRouter(
   }
 );
 
-createRoot(document.getElementById('root')!).render(
+const rootElement = document.getElementById('root')!;
+let root = (window as any).__studbud_root;
+
+if (!root) {
+  root = createRoot(rootElement);
+  (window as any).__studbud_root = root;
+}
+
+root.render(
   <StrictMode>
     <RouterProvider router={router} />
   </StrictMode>
