@@ -199,29 +199,30 @@ export function NotesPage() {
     setError("");
 
     try {
-      const prompt = `Translate the following lecture transcript into clear, accurate English. Respond with ONLY the English translation, no other conversational text:\n\n${transcript.substring(0, 25000)}`;
       let translated = "";
 
-      // Try backend
+      // 1. Try backend dedicated translate route
       try {
-        const res = await fetch('/api/ai/tutor', {
+        const res = await fetch('/api/ai/translate', {
           method: 'POST',
           headers: { 
             'Content-Type': 'application/json',
             'x-gemini-key': import.meta.env.VITE_PUBLIC_GEMINI_API_KEY || '',
             'x-groq-key': import.meta.env.VITE_PUBLIC_GROQ_API_KEY || ''
           },
-          body: JSON.stringify({ message: prompt })
+          body: JSON.stringify({ text: transcript, targetLanguage: 'English' })
         });
         if (res.ok) {
           const data = await res.json();
-          if (data.content) translated = data.content;
+          if (data.translation) translated = data.translation;
         }
       } catch (beErr) {
-        console.warn("Backend translation failed, trying client Groq...", beErr);
+        console.warn("Backend translation failed, trying client AI...", beErr);
       }
 
+      // 2. Client-side fallback translation
       if (!translated) {
+        const prompt = `Translate the following lecture transcript into clear, accurate English. Respond ONLY with the direct English translation, no other conversational text:\n\n${transcript.substring(0, 15000)}`;
         translated = await generateWithGroq(prompt);
       }
 
@@ -263,8 +264,11 @@ export function NotesPage() {
         await fetchVideoData(videoId);
       }
 
-      const geminiApiKey = import.meta.env.VITE_PUBLIC_GEMINI_API_KEY || '';
-      const groqApiKey = import.meta.env.VITE_PUBLIC_GROQ_API_KEY || '';
+      const geminiApiKey = (import.meta.env.VITE_PUBLIC_GEMINI_API_KEY || '').trim();
+      const groqApiKey = (import.meta.env.VITE_PUBLIC_GROQ_API_KEY || '').trim();
+
+      // Optimize transcript length to fit cleanly within model TPM and context limits
+      const boundedTranscript = transcriptText ? transcriptText.substring(0, 15000) : "";
 
       let prompt = `You are an expert academic tutor. Generate comprehensive, well-structured academic notes in ENGLISH based on the following YouTube lecture:\n\n`;
       prompt += `YouTube URL: ${videoUrl}\n\n`;
@@ -273,8 +277,8 @@ export function NotesPage() {
         prompt += `Video Description: ${videoData.description}\n\n`;
       }
 
-      if (transcriptText) {
-        prompt += `Transcript:\n${transcriptText.substring(0, 30000)}\n\n`;
+      if (boundedTranscript) {
+        prompt += `Transcript:\n${boundedTranscript}\n\n`;
       }
 
       prompt += `
@@ -328,7 +332,7 @@ Ensure all text is in fluent English with proper Markdown and LaTeX formatting.`
             videoUrl,
             videoTitle: videoData?.title,
             videoDescription: videoData?.description,
-            transcript: transcriptText
+            transcript: boundedTranscript
           })
         });
 
@@ -342,11 +346,23 @@ Ensure all text is in fluent English with proper Markdown and LaTeX formatting.`
         console.warn("Backend note generation unreachable, trying client providers...", backendErr);
       }
 
-      // 2. Try Client Gemini if backend didn't return notes
+      // 2. Try Client Groq if backend didn't return notes
+      if (!generatedNotes && groqApiKey) {
+        try {
+          const groqResult = await generateWithGroq(prompt);
+          if (groqResult) {
+            generatedNotes = groqResult;
+          }
+        } catch (groqErr) {
+          console.warn("Client Groq note generation failed, trying Gemini...", groqErr);
+        }
+      }
+
+      // 3. Try Client Gemini if Groq didn't return notes
       if (!generatedNotes && geminiApiKey) {
         try {
           const genAI = new GoogleGenerativeAI(geminiApiKey);
-          const candidateModels = ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-2.5-flash", "gemini-1.5-pro-latest", "gemini-1.5-flash-8b", "gemini-pro"];
+          const candidateModels = ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-2.5-flash", "gemini-1.5-pro", "gemini-pro"];
 
           for (const modelName of candidateModels) {
             try {
@@ -367,20 +383,8 @@ Ensure all text is in fluent English with proper Markdown and LaTeX formatting.`
         }
       }
 
-      // 3. Fallback to Groq if Gemini failed or is not available
       if (!generatedNotes) {
-        try {
-          const groqResult = await generateWithGroq(prompt);
-          if (groqResult) {
-            generatedNotes = groqResult;
-          }
-        } catch (groqErr) {
-          console.warn("Groq fallback also failed:", groqErr);
-        }
-      }
-
-      if (!generatedNotes) {
-        throw new Error("Could not generate notes with configured AI keys. Please check VITE_PUBLIC_GEMINI_API_KEY or VITE_PUBLIC_GROQ_API_KEY in your .env file.");
+        throw new Error("Could not generate notes with configured AI keys. Please check VITE_PUBLIC_GROQ_API_KEY in your .env file.");
       }
 
       setNotes(generatedNotes);

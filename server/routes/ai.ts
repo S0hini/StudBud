@@ -237,6 +237,57 @@ Ensure the Markdown is rich, clean, formatted with proper headings (#, ##, ###),
   }
 });
 
+// POST /api/ai/translate
+aiRouter.post('/translate', async (req: Request, res: Response) => {
+  try {
+    const { text, targetLanguage = 'English' } = req.body;
+
+    if (!text || typeof text !== 'string') {
+      return res.status(400).json({ error: 'Text to translate is required' });
+    }
+
+    const { geminiKey, groqKey } = getEnvKeys(req);
+
+    // Limit chunk to avoid token overflow
+    const trimmed = text.substring(0, 20000);
+    const prompt = `You are a professional academic translator. Translate the following lecture transcript into clear, fluent ${targetLanguage}.
+Keep all technical concepts, mathematical symbols, and definitions accurate.
+Respond ONLY with the direct translated text. Do NOT add any preamble, conversational greeting, or markdown wrap.
+
+Transcript to translate:
+${trimmed}`;
+
+    if (groqKey) {
+      const groqResult = await queryGroq(groqKey, [{ role: 'user', content: prompt }], 3000);
+      if (groqResult) {
+        return res.json({ success: true, translation: groqResult.trim(), provider: 'groq' });
+      }
+    }
+
+    if (geminiKey) {
+      const genAI = new GoogleGenerativeAI(geminiKey);
+      for (const modelName of GEMINI_CANDIDATE_MODELS) {
+        try {
+          const model = genAI.getGenerativeModel({ model: modelName });
+          const result = await model.generateContent(prompt);
+          const response = await result.response;
+          const translated = response.text();
+          if (translated) return res.json({ success: true, translation: translated.trim(), provider: 'gemini', model: modelName });
+        } catch (geminiErr: any) {
+          console.warn(`[AI Translate] Gemini ${modelName} failed:`, geminiErr?.message);
+        }
+      }
+    }
+
+    return res.status(503).json({
+      error: 'AI translation service unavailable. Please check your Groq/Gemini API key.'
+    });
+  } catch (err: any) {
+    console.error('[AI] Translate error:', err);
+    return res.status(500).json({ error: err?.message || 'Failed to translate' });
+  }
+});
+
 // POST /api/ai/recommend-lectures
 aiRouter.post('/recommend-lectures', async (req: Request, res: Response) => {
   try {
