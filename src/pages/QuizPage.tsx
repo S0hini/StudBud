@@ -114,13 +114,13 @@ export function QuizPage() {
       }
 
       if (user) {
-        await addDoc(collection(db, "quizzes"), {
+        addDoc(collection(db, "quizzes"), {
           course: c,
           topic: t,
           level: l,
           userId: user.uid,
           timestamp: serverTimestamp()
-        });
+        }).catch((e) => console.warn("Firestore quiz record write warning:", e));
       }
     } catch (err) {
       console.error("Error starting quiz:", err);

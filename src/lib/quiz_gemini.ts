@@ -14,6 +14,19 @@ interface QuizQuestion {
   explanation: string;
 }
 
+// Helper to escape LaTeX commands and unescaped backslashes in JSON before parsing
+function sanitizeJsonForLatex(raw: string): string {
+  if (!raw) return '';
+
+  // 1. Fix common LaTeX commands that conflict with JSON escapes like \f (frac), \t (to/tan/theta), \b (begin/beta), \r (right/rho)
+  let s = raw.replace(/\\(frac|to|tan|times|theta|text|tau|textbf|tilde|top|begin|end|beta|bar|bullet|bmod|boxed|binom|bmatrix|pmatrix|vmatrix|cases|cdot|cos|csc|cot|cosh|sinh|tanh|deg|det|dim|div|exp|gcd|hom|inf|injlim|ker|lg|lim|liminf|limsup|ln|log|max|min|Pr|sec|sin|sup|sqrt|sum|prod|int|oint|partial|nabla|infty|alpha|gamma|delta|epsilon|zeta|eta|iota|kappa|lambda|mu|nu|xi|pi|rho|sigma|upsilon|phi|chi|psi|omega|le|ge|neq|approx|equiv|sim|pm|mp|cap|cup|subset|subseteq|in|notin|forall|exists|neg|lor|land|rightarrow|leftarrow|Rightarrow|Leftarrow|leftrightarrow|Leftrightarrow|mapsto|uparrow|downarrow|displaystyle|left|right|big|Big|bigg|Bigg|over|under)/g, '\\\\$1');
+
+  // 2. Fix all other invalid single backslashes that would cause JSON.parse SyntaxError: Bad escaped character
+  s = s.replace(/\\(?!["\\/bfnrt]|u[0-9a-fA-F]{4})/g, '\\\\');
+
+  return s;
+}
+
 // Helper to safely parse and normalize questions from raw AI responses
 function parseAndNormalizeQuizJson(
   rawText: string,
@@ -23,7 +36,7 @@ function parseAndNormalizeQuizJson(
 ): QuizQuestion[] {
   if (!rawText) return [];
 
-  // 1. Clean markdown fences and isolate JSON
+  // Clean markdown code blocks
   let cleaned = rawText.replace(/```json/gi, '').replace(/```/g, '').trim();
   const startIndex = cleaned.indexOf('[');
   const endIndex = cleaned.lastIndexOf(']');
@@ -32,28 +45,31 @@ function parseAndNormalizeQuizJson(
     cleaned = cleaned.substring(startIndex, endIndex + 1);
   }
 
+  // Sanitize LaTeX backslashes for valid JSON
+  const sanitized = sanitizeJsonForLatex(cleaned);
+
   let rawList: any[] = [];
 
-  // 2. Direct JSON Parse attempt
+  // Try direct parse with sanitized string
   try {
-    rawList = JSON.parse(cleaned);
-  } catch (directErr) {
-    // 3. Fallback: Parse individual JSON objects in case array was cut off
+    rawList = JSON.parse(sanitized);
+  } catch (err1) {
+    // Fallback try with original cleaned string
     try {
-      // Find all complete object blocks { ... }
-      const objectRegex = /\{\s*"question"[\s\S]*?"explanation"\s*:\s*"(?:[^"\\]|\\.)*"\s*\}/g;
-      const matches = cleaned.match(objectRegex);
-      if (matches && matches.length > 0) {
-        rawList = matches.map((m) => {
-          try {
-            return JSON.parse(m);
-          } catch {
-            return null;
-          }
-        }).filter(Boolean);
+      rawList = JSON.parse(cleaned);
+    } catch (err2) {
+      // Fallback regex extraction of individual object blocks { ... }
+      try {
+        const objectRegex = /\{\s*"question"[\s\S]*?"(?:explanation|answer)"\s*:\s*"(?:[^"\\]|\\.)*"\s*\}/g;
+        const matches = (sanitized.match(objectRegex) || cleaned.match(objectRegex));
+        if (matches && matches.length > 0) {
+          rawList = matches.map((m) => {
+            try { return JSON.parse(m); } catch { return null; }
+          }).filter(Boolean);
+        }
+      } catch (err3) {
+        console.warn("Regex object extraction fallback failed:", err3);
       }
-    } catch (regexErr) {
-      console.warn("Regex object extraction fallback failed:", regexErr);
     }
   }
 
@@ -61,7 +77,6 @@ function parseAndNormalizeQuizJson(
     throw new Error("Failed to parse valid quiz questions from AI response");
   }
 
-  // 4. Normalize fields, options, and answer mappings
   const validated: QuizQuestion[] = [];
 
   for (const item of rawList) {
@@ -73,7 +88,7 @@ function parseAndNormalizeQuizJson(
     let rawAnswer = String(item.answer || '').trim();
     let finalAnswer = options[0];
 
-    // Check if answer is letter notation like "A", "B", "C", "D" or "Option A"
+    // Map letter notation "A", "B", "C", "D" or "Option A" to matching option
     const letterMatch = rawAnswer.match(/^(?:Option\s*)?([A-D])(?:\b|\))/i);
     if (letterMatch) {
       const idx = letterMatch[1].toUpperCase().charCodeAt(0) - 65;
@@ -81,12 +96,10 @@ function parseAndNormalizeQuizJson(
         finalAnswer = options[idx];
       }
     } else {
-      // Check if rawAnswer exactly matches one of the options
       const exactMatch = options.find((opt) => opt.toLowerCase() === rawAnswer.toLowerCase());
       if (exactMatch) {
         finalAnswer = exactMatch;
       } else {
-        // Fallback: search for partial match
         const partialMatch = options.find((opt) => rawAnswer.toLowerCase().includes(opt.toLowerCase()) || opt.toLowerCase().includes(rawAnswer.toLowerCase()));
         if (partialMatch) {
           finalAnswer = partialMatch;
@@ -117,21 +130,20 @@ export const getQuizQuestions = async (
   level: string
 ): Promise<{ questions: QuizQuestion[] }> => {
   const apiKey = (import.meta.env.VITE_PUBLIC_GROQ_API_KEY || '').trim();
-  const geminiApiKey = (import.meta.env.VITE_PUBLIC_GEMINI_API_KEY || '').trim();
 
   const prompt = `Generate 8 multiple-choice questions (MCQs) on "${topic}" related to "${course}" for the "${level}" difficulty level.
 Each question must have exactly 4 options.
 For the "answer" field, specify the EXACT string matching one of the options in the "options" array.
-For any mathematical formulas or symbols, format cleanly with LaTeX delimiters (e.g. \\lim_{x \\to 0} \\frac{\\sin x}{x}, x^2, \\infty).
+For any mathematical formulas or symbols, format with LaTeX dollar delimiters (e.g. $\\lim_{x \\to 0} \\frac{\\sin x}{x}$, $x^2$, $\\infty$).
 Keep explanations concise (1-2 sentences).
 
-Respond ONLY with a valid JSON array matching this exact schema:
+Respond ONLY with a valid JSON array:
 [
   {
     "question": "What is ...?",
     "options": ["Option 1", "Option 2", "Option 3", "Option 4"],
     "answer": "Option 1",
-    "explanation": "Brief 1-sentence explanation."
+    "explanation": "Brief explanation."
   }
 ]`;
 
@@ -167,7 +179,7 @@ Respond ONLY with a valid JSON array matching this exact schema:
             model,
             messages: [{ role: "user", content: prompt }],
             max_tokens: 4096,
-            temperature: 0.6
+            temperature: 0.5
           })
         });
 

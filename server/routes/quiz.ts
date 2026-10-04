@@ -3,6 +3,13 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 
 export const quizRouter = Router();
 
+function sanitizeJsonForLatex(raw: string): string {
+  if (!raw) return '';
+  let s = raw.replace(/\\(frac|to|tan|times|theta|text|tau|textbf|tilde|top|begin|end|beta|bar|bullet|bmod|boxed|binom|bmatrix|pmatrix|vmatrix|cases|cdot|cos|csc|cot|cosh|sinh|tanh|deg|det|dim|div|exp|gcd|hom|inf|injlim|ker|lg|lim|liminf|limsup|ln|log|max|min|Pr|sec|sin|sup|sqrt|sum|prod|int|oint|partial|nabla|infty|alpha|gamma|delta|epsilon|zeta|eta|iota|kappa|lambda|mu|nu|xi|pi|rho|sigma|upsilon|phi|chi|psi|omega|le|ge|neq|approx|equiv|sim|pm|mp|cap|cup|subset|subseteq|in|notin|forall|exists|neg|lor|land|rightarrow|leftarrow|Rightarrow|Leftarrow|leftrightarrow|Leftrightarrow|mapsto|uparrow|downarrow|displaystyle|left|right|big|Big|bigg|Bigg|over|under)/g, '\\\\$1');
+  s = s.replace(/\\(?!["\\/bfnrt]|u[0-9a-fA-F]{4})/g, '\\\\');
+  return s;
+}
+
 // POST /api/quiz/generate
 quizRouter.post('/generate', async (req: Request, res: Response) => {
   try {
@@ -18,7 +25,7 @@ quizRouter.post('/generate', async (req: Request, res: Response) => {
     const prompt = `Generate ${count} multiple-choice questions (MCQs) on "${topic}" related to "${course}" for the "${level}" difficulty level.
 Each question must have exactly 4 options.
 For the "answer" field, specify the EXACT string matching one of the options in the "options" array.
-For any mathematical formulas or symbols, format cleanly with LaTeX delimiters (e.g. \\lim_{x \\to 0} \\frac{\\sin x}{x}, x^2, \\infty).
+For any mathematical formulas or symbols, format with LaTeX dollar delimiters (e.g. $\\lim_{x \\to 0} \\frac{\\sin x}{x}$, $x^2$, $\\infty$).
 Keep explanations concise (1-2 sentences).
 
 Respond ONLY with a valid JSON array:
@@ -46,7 +53,8 @@ Respond ONLY with a valid JSON array:
             body: JSON.stringify({
               model: groqModel,
               messages: [{ role: 'user', content: prompt }],
-              max_tokens: 4096
+              max_tokens: 4096,
+              temperature: 0.5
             })
           });
 
@@ -92,16 +100,22 @@ Respond ONLY with a valid JSON array:
       jsonContent = jsonContent.substring(startIndex, endIndex + 1);
     }
 
+    const sanitized = sanitizeJsonForLatex(jsonContent);
+
     let parsedQuestions: any[] = [];
     try {
-      parsedQuestions = JSON.parse(jsonContent);
+      parsedQuestions = JSON.parse(sanitized);
     } catch {
-      const objectRegex = /\{\s*"question"[\s\S]*?"explanation"\s*:\s*"(?:[^"\\]|\\.)*"\s*\}/g;
-      const matches = jsonContent.match(objectRegex);
-      if (matches && matches.length > 0) {
-        parsedQuestions = matches.map((m) => {
-          try { return JSON.parse(m); } catch { return null; }
-        }).filter(Boolean);
+      try {
+        parsedQuestions = JSON.parse(jsonContent);
+      } catch {
+        const objectRegex = /\{\s*"question"[\s\S]*?"(?:explanation|answer)"\s*:\s*"(?:[^"\\]|\\.)*"\s*\}/g;
+        const matches = sanitized.match(objectRegex) || jsonContent.match(objectRegex);
+        if (matches && matches.length > 0) {
+          parsedQuestions = matches.map((m) => {
+            try { return JSON.parse(m); } catch { return null; }
+          }).filter(Boolean);
+        }
       }
     }
 
