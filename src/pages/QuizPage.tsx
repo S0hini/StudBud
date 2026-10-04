@@ -1,60 +1,92 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { getQuizQuestions } from "../lib/quiz_gemini"; 
 import { db } from "../lib/firebase"; 
-import { collection, addDoc } from "firebase/firestore";
-import { Loader, CheckCircle, XCircle, RefreshCw, Info, ChevronDown, ChevronUp, Zap, BookOpen, Award } from "lucide-react";
+import { collection, addDoc, serverTimestamp } from "firebase/firestore";
+import { 
+  Loader, 
+  CheckCircle, 
+  XCircle, 
+  RefreshCw, 
+  Info, 
+  ChevronDown, 
+  ChevronUp, 
+  Zap, 
+  BookOpen, 
+  Award, 
+  Coins, 
+  Sparkles,
+  Trophy
+} from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { useAuthStore } from '../lib/store';
+import { formatMathExpressions } from '../lib/mathFormatter';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeRaw from 'rehype-raw';
+import rehypeKatex from 'rehype-katex';
 
-function QuizPage() {
+interface Question {
+  question: string;
+  options: string[];
+  answer: string;
+  explanation: string;
+}
+
+export function QuizPage() {
   const location = useLocation();
+  const navigate = useNavigate();
+  const { user, credits, awardCredits } = useAuthStore();
+
   const [course, setCourse] = useState("");
   const [topic, setTopic] = useState("");
-  const [level, setLevel] = useState("");
+  const [level, setLevel] = useState("Intermediate");
   const [loading, setLoading] = useState(false);
-  const [quizData, setQuizData] = useState([]);
-  const [selectedAnswers, setSelectedAnswers] = useState({});
-  const [showAnswers, setShowAnswers] = useState({});
+  const [quizData, setQuizData] = useState<Question[]>([]);
+  const [selectedAnswers, setSelectedAnswers] = useState<{ [key: number]: string }>({});
+  const [showAnswers, setShowAnswers] = useState<{ [key: number]: boolean }>({});
   const [quizStarted, setQuizStarted] = useState(false);
-  const [answeredQuestions, setAnsweredQuestions] = useState({});
-  const [showExplanations, setShowExplanations] = useState({});
-  const [generatingAnimation, setGeneratingAnimation] = useState(false);
-  const [scoringInfo, setScoringInfo] = useState("");
+  const [answeredQuestions, setAnsweredQuestions] = useState<{ [key: number]: boolean }>({});
+  const [showExplanations, setShowExplanations] = useState<{ [key: number]: boolean }>({});
+  const [recentEarnedPoints, setRecentEarnedPoints] = useState<number | null>(null);
+  const [quizCompleted, setQuizCompleted] = useState(false);
+
+  // Quick Presets
+  const popularPresets = [
+    { course: "GATE CSE", topic: "Limits and Continuity", level: "Intermediate" },
+    { course: "GATE CSE", topic: "Graph Theory & Trees", level: "Advanced" },
+    { course: "Computer Science", topic: "Operating Systems Deadlock & Synchronization", level: "Intermediate" },
+    { course: "Mathematics", topic: "Calculus Limits and Differentiation", level: "Beginner" },
+    { course: "Computer Science", topic: "Data Structures & Binary Search Trees", level: "Intermediate" }
+  ];
 
   useEffect(() => {
-    if (location.state?.fromTutor) {
-      if (location.state.course) setCourse(location.state.course);
-      if (location.state.topic) setTopic(location.state.topic);
+    if (location.state?.course) setCourse(location.state.course);
+    if (location.state?.topic) setTopic(location.state.topic);
+    if (location.state?.fromTutor || location.state?.fromLecture) {
+      if (location.state.course && location.state.topic) {
+        startQuiz(location.state.course, location.state.topic, level);
+      }
     }
-  }, [location]);
+  }, [location.state]);
 
-  useEffect(() => {
-    if (loading) {
-      setGeneratingAnimation(true);
-      const timer = setTimeout(() => setGeneratingAnimation(false), 3000);
-      return () => clearTimeout(timer);
+  const getPointsPerCorrect = () => {
+    switch (level) {
+      case "Beginner": return 1;
+      case "Intermediate": return 2;
+      case "Advanced": return 3;
+      default: return 1;
     }
-  }, [loading]);
+  };
 
-  useEffect(() => {
-    switch(level) {
-      case "Beginner":
-        setScoringInfo("Scoring: +1 point for each correct answer");
-        break;
-      case "Intermediate":
-        setScoringInfo("Scoring: +2 points for each correct answer");
-        break;
-      case "Advanced":
-        setScoringInfo("Scoring: +3 points for each correct answer, -1 point for wrong answers");
-        break;
-      default:
-        setScoringInfo("");
-    }
-  }, [level]);
+  const startQuiz = async (overrideCourse?: string, overrideTopic?: string, overrideLevel?: string) => {
+    const c = (overrideCourse || course).trim();
+    const t = (overrideTopic || topic).trim();
+    const l = overrideLevel || level || "Intermediate";
 
-  const startQuiz = async () => {
-    if (!course || !topic || !level) {
-      alert("Please fill all fields before starting the quiz.");
+    if (!c || !t || !l) {
+      alert("Please enter Course, Topic, and select a Difficulty Level.");
       return;
     }
 
@@ -64,59 +96,76 @@ function QuizPage() {
     setShowAnswers({});
     setAnsweredQuestions({});
     setShowExplanations({});
+    setQuizCompleted(false);
+    setRecentEarnedPoints(null);
     setQuizStarted(true);
 
     try {
-      const response = await getQuizQuestions(course, topic, level);
-      console.log("API Response:", response);
-      
-      if (response && response.questions && Array.isArray(response.questions)) {
-        // Add explanations to each question if they don't already have one
-        const questionsWithExplanations = response.questions.map(question => {
-          if (!question.explanation) {
-            // Generate a simple explanation if none exists
-            const explanation = `The correct answer is "${question.answer}". This is a key concept in ${topic} that's important to understand for ${level} level ${course}.`;
-            return { ...question, explanation };
-          }
-          return question;
-        });
-        
-        setQuizData(questionsWithExplanations);
+      const response = await getQuizQuestions(c, t, l);
+      if (response && response.questions && Array.isArray(response.questions) && response.questions.length > 0) {
+        const validated = response.questions.map((q) => ({
+          ...q,
+          explanation: q.explanation || `The correct answer is "${q.answer}". This is an essential concept in ${t}.`
+        }));
+        setQuizData(validated);
       } else {
-        console.error("Invalid response format:", response);
-        alert("Received invalid response format from API.");
+        alert("Could not generate questions for this topic. Please try with different keywords.");
+        setQuizStarted(false);
       }
 
-      // Save quiz metadata to Firebase
-      await addDoc(collection(db, "quizzes"), {
-        course,
-        topic,
-        level,
-        timestamp: new Date(),
-      });
-
-    } catch (error) {
-      console.error("Error fetching quiz questions:", error);
-      alert("Failed to load questions. Try again later.");
+      if (user) {
+        await addDoc(collection(db, "quizzes"), {
+          course: c,
+          topic: t,
+          level: l,
+          userId: user.uid,
+          timestamp: serverTimestamp()
+        });
+      }
+    } catch (err) {
+      console.error("Error starting quiz:", err);
+      alert("Failed to load questions. Please check your network and API keys.");
+      setQuizStarted(false);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleAnswerSelect = (questionIndex, selectedOption) => {
-    // Only allow selection if this question hasn't been answered yet
-    if (!answeredQuestions[questionIndex]) {
-      setSelectedAnswers((prev) => ({ ...prev, [questionIndex]: selectedOption }));
-      setShowAnswers((prev) => ({ ...prev, [questionIndex]: true }));
-      setAnsweredQuestions((prev) => ({ ...prev, [questionIndex]: true }));
+  const handleAnswerSelect = async (questionIndex: number, selectedOption: string) => {
+    if (answeredQuestions[questionIndex]) return;
+
+    const currentQuestion = quizData[questionIndex];
+    if (!currentQuestion) return;
+
+    const isCorrect = (selectedOption || '').trim().toLowerCase() === (currentQuestion.answer || '').trim().toLowerCase();
+
+    setSelectedAnswers((prev) => ({ ...prev, [questionIndex]: selectedOption }));
+    setShowAnswers((prev) => ({ ...prev, [questionIndex]: true }));
+    setAnsweredQuestions((prev) => ({ ...prev, [questionIndex]: true }));
+
+    // Award points and credits if correct
+    if (isCorrect) {
+      const pts = getPointsPerCorrect();
+      setRecentEarnedPoints(pts);
+      setTimeout(() => setRecentEarnedPoints(null), 2500);
+
+      if (user) {
+        await awardCredits(pts, false);
+      }
+    }
+
+    // Check if all questions are now answered
+    const nextAnsweredCount = Object.keys(answeredQuestions).length + 1;
+    if (nextAnsweredCount === quizData.length) {
+      setQuizCompleted(true);
+      if (user) {
+        await awardCredits(0, true); // increments totalQuizzesTaken
+      }
     }
   };
 
-  const toggleExplanation = (questionIndex) => {
-    setShowExplanations((prev) => ({ 
-      ...prev, 
-      [questionIndex]: !prev[questionIndex] 
-    }));
+  const toggleExplanation = (questionIndex: number) => {
+    setShowExplanations((prev) => ({ ...prev, [questionIndex]: !prev[questionIndex] }));
   };
 
   const resetQuiz = () => {
@@ -124,512 +173,410 @@ function QuizPage() {
     setShowAnswers({});
     setAnsweredQuestions({});
     setShowExplanations({});
-  };
-
-  const generateNewQuiz = () => {
-    // Keep the same parameters but generate new questions
-    startQuiz();
+    setQuizCompleted(false);
   };
 
   const resetEntireQuiz = () => {
     setCourse("");
     setTopic("");
-    setLevel("");
+    setLevel("Intermediate");
     setQuizData([]);
     setSelectedAnswers({});
     setShowAnswers({});
     setAnsweredQuestions({});
     setShowExplanations({});
     setQuizStarted(false);
+    setQuizCompleted(false);
   };
 
   const calculateScore = () => {
     if (quizData.length === 0) return { correct: 0, total: 0, percentage: 0, points: 0 };
-    
     let correct = 0;
     let points = 0;
-    
-    Object.keys(selectedAnswers).forEach(index => {
-      const isCorrect = selectedAnswers[index] === quizData[index].answer;
+    const ptsPerCorrect = getPointsPerCorrect();
+
+    Object.keys(selectedAnswers).forEach((idxStr) => {
+      const idx = parseInt(idxStr, 10);
+      const isCorrect = (selectedAnswers[idx] || '').trim().toLowerCase() === (quizData[idx]?.answer || '').trim().toLowerCase();
       if (isCorrect) {
         correct++;
-        switch(level) {
-          case "Beginner":
-            points += 1;
-            break;
-          case "Intermediate":
-            points += 2;
-            break;
-          case "Advanced":
-            points += 3;
-            break;
-        }
+        points += ptsPerCorrect;
       } else if (level === "Advanced") {
-        points -= 1; // Negative marking for Advanced level
+        points = Math.max(0, points - 1);
       }
     });
-    
+
     const answered = Object.keys(selectedAnswers).length;
     const percentage = answered > 0 ? Math.round((correct / answered) * 100) : 0;
-    
     return { correct, total: answered, percentage, points };
   };
 
   const score = calculateScore();
 
-  // Get emoji based on score percentage
-  const getScoreEmoji = () => {
-    if (score.percentage >= 90) return "🏆";
-    if (score.percentage >= 70) return "🌟";
-    if (score.percentage >= 50) return "👍";
-    return "🔄";
-  };
-
   return (
-    <div className="min-h-screen bg-black text-white">
-      <motion.div 
+    <div className="min-h-screen bg-black text-white px-4 py-8 max-w-5xl mx-auto">
+      {/* Floating Earned Credits Toast */}
+      <AnimatePresence>
+        {recentEarnedPoints !== null && (
+          <motion.div
+            initial={{ opacity: 0, y: -20, scale: 0.8 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -20, scale: 0.8 }}
+            className="fixed top-6 right-6 z-50 bg-gradient-to-r from-amber-500 to-yellow-400 text-black px-5 py-3 rounded-2xl font-bold shadow-2xl flex items-center space-x-2 border border-yellow-200"
+          >
+            <Coins className="w-6 h-6 animate-spin text-black" />
+            <span className="text-sm sm:text-base">+{recentEarnedPoints} Credits Earned!</span>
+            <Sparkles className="w-5 h-5 text-black" />
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Header Banner */}
+      <motion.div
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
-        className="max-w-4xl mx-auto px-6 py-12"
+        className="bg-[#B3D8A8]/10 backdrop-blur-lg rounded-2xl p-6 sm:p-8 border border-[#B3D8A8]/30 mb-8 shadow-xl shadow-[#B3D8A8]/5"
       >
-        <motion.h1 
-          className="text-4xl font-bold mb-8 text-center bg-clip-text text-transparent bg-gradient-to-r from-[#B3D8A8] to-[#82A878]"
-          initial={{ scale: 0.8 }}
-          animate={{ scale: 1 }}
-          transition={{ 
-            type: "spring", 
-            stiffness: 200, 
-            damping: 10 
-          }}
-        >
-          AI-Powered Quiz Generator
-        </motion.h1>
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <div className="flex items-center space-x-3 mb-2">
+              <div className="p-2.5 bg-[#B3D8A8]/20 rounded-xl border border-[#B3D8A8]/40">
+                <Trophy className="w-6 h-6 text-[#B3D8A8]" />
+              </div>
+              <h1 className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-white via-gray-100 to-[#B3D8A8] bg-clip-text text-transparent">
+                AI Interactive Quiz & Credit Rewards
+              </h1>
+            </div>
+            <p className="text-gray-400 text-sm max-w-xl">
+              Test your mastery on any topic. Earn <span className="text-[#B3D8A8] font-semibold">+{getPointsPerCorrect()} credits</span> per correct answer and boost your global rank!
+            </p>
+          </div>
 
-        <motion.div 
-          className="space-y-4 bg-[#B3D8A8]/10 backdrop-blur-lg p-8 rounded-2xl border border-[#B3D8A8]/30 shadow-lg shadow-[#B3D8A8]/10"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.2, duration: 0.5 }}
+          {/* User Credits Balance Card */}
+          <div 
+            onClick={() => navigate('/credits')}
+            className="cursor-pointer bg-black/60 hover:bg-black/80 border border-[#B3D8A8]/30 hover:border-[#B3D8A8]/60 p-3.5 rounded-2xl flex items-center space-x-3 transition-all group"
+            title="View Credits Dashboard"
+          >
+            <div className="p-2 bg-yellow-500/20 rounded-xl border border-yellow-500/30">
+              <Coins className="w-5 h-5 text-yellow-400 group-hover:rotate-12 transition-transform" />
+            </div>
+            <div>
+              <span className="text-xs text-gray-400 block font-medium">Your Credits</span>
+              <span className="text-lg font-bold text-[#B3D8A8]">{credits}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Quiz Setup Form */}
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            startQuiz();
+          }}
+          className="mt-6 space-y-4"
         >
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <motion.div 
-              whileHover={{ scale: 1.02 }}
-              className="relative"
-            >
-              <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-blue-300">
-                <BookOpen className="w-5 h-5" />
-              </span>
-              <input
-                type="text"
-                placeholder="Enter Course Name"
-                value={course}
-                onChange={(e) => setCourse(e.target.value)}
-                className="w-full pl-10 px-4 py-3 rounded-xl bg-[#B3D8A8]/5 border border-[#B3D8A8]/30 focus:border-[#82A878] focus:ring-2 focus:ring-[#B3D8A8]/40 focus:outline-none transition-all duration-300"
-              />
-            </motion.div>
-            
-            <motion.div 
-              whileHover={{ scale: 1.02 }}
-              className="relative"
-            >
-              <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-blue-300">
-                <Zap className="w-5 h-5" />
-              </span>
-              <input
-                type="text"
-                placeholder="Enter Topic"
-                value={topic}
-                onChange={(e) => setTopic(e.target.value)}
-                className="w-full pl-10 px-4 py-3 rounded-xl bg-[#B3D8A8]/5 border border-[#B3D8A8]/30 focus:border-[#82A878] focus:ring-2 focus:ring-[#B3D8A8]/40 focus:outline-none transition-all duration-300"
-              />
-            </motion.div>
-            
-            <motion.div 
-              whileHover={{ scale: 1.02 }}
-              className="relative"
-            >
-              <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-blue-300">
-                <Award className="w-5 h-5" />
-              </span>
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-3 sm:gap-4">
+            <div className="md:col-span-4">
+              <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1.5">
+                Course / Subject <span className="text-[#B3D8A8]">*</span>
+              </label>
+              <div className="relative">
+                <input
+                  type="text"
+                  placeholder="e.g., Mathematics, GATE CSE"
+                  value={course}
+                  onChange={(e) => setCourse(e.target.value)}
+                  className="w-full pl-10 px-4 py-3 bg-black/60 border border-[#B3D8A8]/30 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-[#B3D8A8] focus:ring-1 focus:ring-[#B3D8A8] transition-all text-sm"
+                  required
+                />
+                <BookOpen className="w-4 h-4 text-gray-400 absolute left-3.5 top-3.5" />
+              </div>
+            </div>
+
+            <div className="md:col-span-5">
+              <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1.5">
+                Topic / Chapter <span className="text-[#B3D8A8]">*</span>
+              </label>
+              <div className="relative">
+                <input
+                  type="text"
+                  placeholder="e.g., Limits & Continuity, Graph Theory"
+                  value={topic}
+                  onChange={(e) => setTopic(e.target.value)}
+                  className="w-full pl-10 px-4 py-3 bg-black/60 border border-[#B3D8A8]/30 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-[#B3D8A8] focus:ring-1 focus:ring-[#B3D8A8] transition-all text-sm"
+                  required
+                />
+                <Zap className="w-4 h-4 text-gray-400 absolute left-3.5 top-3.5" />
+              </div>
+            </div>
+
+            <div className="md:col-span-3">
+              <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1.5">
+                Difficulty Level
+              </label>
               <select
                 value={level}
                 onChange={(e) => setLevel(e.target.value)}
-                className="w-full pl-10 px-4 py-3 rounded-xl bg-[#B3D8A8]/5 backdrop-blur-lg border border-[#B3D8A8]/30 text-white focus:border-[#82A878] focus:ring-2 focus:ring-[#B3D8A8]/40 focus:outline-none transition-all duration-300 appearance-none"
-                style={{
-                  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%23B3D8A8'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`,
-                  backgroundRepeat: 'no-repeat',
-                  backgroundPosition: 'right 1rem center',
-                  backgroundSize: '1.5em 1.5em'
-                }}
+                className="w-full px-4 py-3 bg-black/60 border border-[#B3D8A8]/30 rounded-xl text-white focus:outline-none focus:border-[#B3D8A8] focus:ring-1 focus:ring-[#B3D8A8] transition-all text-sm appearance-none"
               >
-                <option value="" className="bg-[#1a1a1a] text-white">Select Difficulty Level</option>
-                <option value="Beginner" className="bg-[#1a1a1a] text-white">Beginner</option>
-                <option value="Intermediate" className="bg-[#1a1a1a] text-white">Intermediate</option>
-                <option value="Advanced" className="bg-[#1a1a1a] text-white">Advanced</option>
+                <option value="Beginner" className="bg-gray-900 text-white">Beginner (+1 pt)</option>
+                <option value="Intermediate" className="bg-gray-900 text-white">Intermediate (+2 pts)</option>
+                <option value="Advanced" className="bg-gray-900 text-white">Advanced (+3 pts, -1 wrong)</option>
               </select>
-            </motion.div>
+            </div>
           </div>
 
-          {scoringInfo && (
-            <motion.div
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="mt-2 p-3 rounded-lg bg-[#B3D8A8]/5 border border-[#B3D8A8]/30"
-            >
-              <p className="text-sm text-[#B3D8A8]">{scoringInfo}</p>
-            </motion.div>
-          )}
-
-          <motion.button
-            onClick={startQuiz}
-            disabled={loading}
-            className="w-full mt-4 px-6 py-3 rounded-xl bg-gradient-to-r from-[#B3D8A8] to-[#82A878] text-black font-medium hover:from-[#B3D8A8]/90 hover:to-[#82A878]/90 focus:ring-4 focus:ring-[#B3D8A8]/50 transition-all duration-300 transform"
-            whileHover={{ scale: 1.03 }}
-            whileTap={{ scale: 0.98 }}
+          <button
+            type="submit"
+            disabled={loading || !course.trim() || !topic.trim()}
+            className="w-full py-3.5 px-6 bg-gradient-to-r from-[#B3D8A8] to-[#82A878] hover:from-[#9bc790] hover:to-[#719667] text-black font-bold rounded-xl flex items-center justify-center space-x-2 transition-all shadow-md shadow-[#B3D8A8]/20 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {loading ? (
-              <span className="flex items-center justify-center space-x-2">
-                <Loader className="w-5 h-5 animate-spin" />
-                <span>Generating Quiz...</span>
-              </span>
+              <>
+                <Loader className="w-5 h-5 animate-spin text-black" />
+                <span>AI Generating 10 MCQs...</span>
+              </>
             ) : (
-              <span className="flex items-center justify-center">
-                <Zap className="w-5 h-5 mr-2" />
-                Start Quiz
-              </span>
+              <>
+                <Zap className="w-5 h-5 text-black" />
+                <span>Start Quiz & Earn Credits</span>
+              </>
             )}
-          </motion.button>
-        </motion.div>
+          </button>
+        </form>
 
-        {loading && (
-          <div className="mt-12 flex flex-col items-center justify-center">
-            <AnimatePresence>
-              {generatingAnimation ? (
-                <motion.div
-                  initial={{ opacity: 0, scale: 0.5 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.5 }}
-                  className="text-center"
+        {/* Preset Chips */}
+        <div className="mt-5 pt-4 border-t border-[#B3D8A8]/20">
+          <div className="flex items-center space-x-2 text-xs text-gray-400 mb-2 font-medium">
+            <Sparkles className="w-3.5 h-3.5 text-[#B3D8A8]" />
+            <span>Popular Quizzes:</span>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {popularPresets.map((preset, idx) => (
+              <button
+                key={idx}
+                type="button"
+                onClick={() => {
+                  setCourse(preset.course);
+                  setTopic(preset.topic);
+                  setLevel(preset.level);
+                  startQuiz(preset.course, preset.topic, preset.level);
+                }}
+                className="text-xs px-3 py-1.5 rounded-lg bg-white/5 hover:bg-[#B3D8A8]/20 border border-white/10 hover:border-[#B3D8A8]/40 text-gray-300 hover:text-white transition-all text-left"
+              >
+                <span className="text-[#B3D8A8] font-semibold">{preset.course}:</span> {preset.topic}
+              </button>
+            ))}
+          </div>
+        </div>
+      </motion.div>
+
+      {/* Quiz Progress & Questions Container */}
+      {!loading && quizData.length > 0 && (
+        <div className="space-y-6">
+          {/* Status Bar */}
+          <div className="bg-[#B3D8A8]/10 border border-[#B3D8A8]/30 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-center justify-between gap-4 backdrop-blur-md">
+            <div>
+              <span className="text-xs font-semibold text-[#B3D8A8] uppercase tracking-wider block">
+                Active Quiz ({level})
+              </span>
+              <h2 className="text-lg sm:text-xl font-bold text-white">
+                {course}: <span className="text-gray-300 font-normal">{topic}</span>
+              </h2>
+            </div>
+
+            <div className="flex items-center space-x-4 bg-black/60 px-5 py-2.5 rounded-xl border border-white/10">
+              <div className="text-center">
+                <span className="text-[10px] text-gray-400 uppercase block">Score</span>
+                <span className="text-base font-bold text-green-400">{score.correct} / {quizData.length}</span>
+              </div>
+              <div className="h-6 w-px bg-white/10" />
+              <div className="text-center">
+                <span className="text-[10px] text-gray-400 uppercase block">Credits Won</span>
+                <span className="text-base font-bold text-yellow-400">+{score.points}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Completion Card */}
+          {quizCompleted && (
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              className="bg-gradient-to-br from-amber-500/20 via-[#B3D8A8]/20 to-black border-2 border-yellow-400/50 rounded-2xl p-6 text-center shadow-2xl"
+            >
+              <Trophy className="w-12 h-12 text-yellow-400 mx-auto mb-2 animate-bounce" />
+              <h3 className="text-2xl font-bold text-white mb-1">Quiz Completed! 🎉</h3>
+              <p className="text-gray-300 text-sm max-w-md mx-auto mb-4">
+                You scored <span className="text-yellow-400 font-bold">{score.correct}/{quizData.length} ({score.percentage}%)</span> and earned <span className="text-green-400 font-bold">+{score.points} Credits</span> added to your account!
+              </p>
+              <div className="flex items-center justify-center space-x-3">
+                <button
+                  onClick={() => startQuiz()}
+                  className="py-2.5 px-5 bg-[#B3D8A8] text-black font-bold rounded-xl text-sm hover:bg-[#9bc790] transition-colors"
                 >
-                  <div className="relative w-32 h-32">
-                    <motion.div 
-                      className="absolute inset-0 rounded-full bg-[#B3D8A8]/30"
-                      animate={{ 
-                        scale: [1, 1.5, 1],
-                        opacity: [0.3, 0.1, 0.3],
-                      }}
-                      transition={{ 
-                        repeat: Infinity,
-                        duration: 2 
-                      }}
-                    />
-                    <motion.div 
-                      className="absolute inset-0 rounded-full bg-[#82A878]/20"
-                      animate={{ 
-                        scale: [1, 1.8, 1],
-                        opacity: [0.2, 0.1, 0.2],
-                      }}
-                      transition={{ 
-                        repeat: Infinity,
-                        duration: 2.5,
-                        delay: 0.2
-                      }}
-                    />
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <Zap className="w-16 h-16 text-blue-400" />
+                  Generate New Quiz
+                </button>
+                <button
+                  onClick={() => navigate('/credits')}
+                  className="py-2.5 px-5 bg-white/10 text-white font-semibold rounded-xl text-sm border border-white/20 hover:bg-white/20 transition-colors"
+                >
+                  View Credits Dashboard
+                </button>
+              </div>
+            </motion.div>
+          )}
+
+          {/* Question Cards */}
+          <div className="space-y-6">
+            {quizData.map((q, qIndex) => {
+              const hasAnswered = !!answeredQuestions[qIndex];
+              const userSelection = selectedAnswers[qIndex];
+              const isCorrectAnswer = (userSelection || '').trim().toLowerCase() === (q.answer || '').trim().toLowerCase();
+
+              return (
+                <motion.div
+                  key={qIndex}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: qIndex * 0.05 }}
+                  className="bg-[#B3D8A8]/5 border border-[#B3D8A8]/20 hover:border-[#B3D8A8]/40 rounded-2xl p-5 sm:p-6 backdrop-blur-md shadow-lg"
+                >
+                  {/* Question Header */}
+                  <div className="flex items-start space-x-3 mb-4">
+                    <span className="flex-shrink-0 w-8 h-8 rounded-xl bg-[#B3D8A8]/20 border border-[#B3D8A8]/40 text-[#B3D8A8] font-bold text-sm flex items-center justify-center">
+                      {qIndex + 1}
+                    </span>
+                    <div className="flex-1 text-base sm:text-lg font-semibold text-white markdown-body prose prose-invert max-w-none">
+                      <ReactMarkdown
+                        remarkPlugins={[remarkGfm, remarkMath]}
+                        rehypePlugins={[rehypeRaw, rehypeKatex]}
+                      >
+                        {formatMathExpressions(q.question)}
+                      </ReactMarkdown>
                     </div>
                   </div>
-                  <motion.p 
-                    className="mt-4 text-blue-300 font-medium"
-                    animate={{ opacity: [0.5, 1, 0.5] }}
-                    transition={{ repeat: Infinity, duration: 1.5 }}
-                  >
-                    AI is generating your quiz...
-                  </motion.p>
-                </motion.div>
-              ) : (
-                <motion.div 
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  className="flex items-center space-x-3"
-                >
-                  <Loader className="w-8 h-8 animate-spin text-blue-500" />
-                  <p>Generating quiz questions...</p>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-        )}
 
-        <AnimatePresence>
-          {!loading && quizData && quizData.length > 0 && (
-            <motion.div 
-              className="mt-12 space-y-6"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5 }}
-            >
-              <div className="flex flex-col md:flex-row justify-between items-center bg-[#FFF5E4]/5 backdrop-blur-md p-4 rounded-xl border border-[#6A9C89]/20">
-                <h2 className="text-xl font-semibold">
-                  <span className="text-[#FFA725]">{course}:</span> {topic} <span className="text-[#6A9C89]">({level})</span>
-                </h2>
-                
-                {/* Score display */}
-                {Object.keys(selectedAnswers).length > 0 && (
-                  <motion.div 
-                    className="mt-3 md:mt-0 bg-black/50 px-6 py-3 rounded-xl border border-gray-700 shadow-lg"
-                    initial={{ scale: 0.8, opacity: 0 }}
-                    animate={{ scale: 1, opacity: 1 }}
-                    transition={{ type: "spring", stiffness: 500, damping: 15 }}
-                  >
-                    <div className="flex items-center space-x-2">
-                      <Award className="w-5 h-5 text-yellow-400" />
-                      <div>
-                        <p className="font-medium">
-                          Score: <span className="font-bold text-green-400">{score.correct}</span>/{score.total} 
-                          <span className="ml-2 text-yellow-300">{score.percentage}%</span>
-                          <span className="ml-2 text-[#B3D8A8]">({score.points} points)</span>
-                          <span className="ml-1 text-xl">{getScoreEmoji()}</span>
-                        </p>
-                      </div>
-                    </div>
-                  </motion.div>
-                )}
-              </div>
-              
-              <div className="space-y-6">
-                {quizData.map((q, index) => (
-                  <motion.div 
-                    key={index}
-                    className="p-6 rounded-xl bg-[#B3D8A8]/5 backdrop-blur-md border border-[#B3D8A8]/30 shadow-lg hover:shadow-[#B3D8A8]/10 transition-all duration-300"
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ 
-                      opacity: 1, 
-                      y: 0,
-                      transition: { delay: index * 0.1 }
-                    }}
-                    whileHover={{ scale: 1.01 }}
-                  >
-                    <h2 className="text-lg font-semibold flex">
-                      <motion.span 
-                        className="flex items-center justify-center w-8 h-8 mr-3 rounded-full bg-[#FFA725]/20 text-[#FFA725] font-bold"
-                        animate={{ 
-                          boxShadow: ["0 0 0px rgba(147, 51, 234, 0.5)", "0 0 10px rgba(147, 51, 234, 0.8)", "0 0 0px rgba(147, 51, 234, 0.5)"]
-                        }}
-                        transition={{ 
-                          repeat: Infinity, 
-                          duration: 2,
-                          delay: index * 0.2
-                        }}
-                      >
-                        {index + 1}
-                      </motion.span>
-                      <span>{q.question}</span>
-                    </h2>
+                  {/* Options List */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
+                    {q.options.map((option, optIdx) => {
+                      const isOptionSelected = userSelection === option;
+                      const isOptionCorrect = (option || '').trim().toLowerCase() === (q.answer || '').trim().toLowerCase();
 
-                    <div className="mt-4 space-y-3">
-                      {q.options && Array.isArray(q.options) ? (
-                        q.options.map((option, optIndex) => (
-                          <motion.button
-                            key={optIndex}
-                            onClick={() => handleAnswerSelect(index, option)}
-                            disabled={answeredQuestions[index]}
-                            className={`w-full px-4 py-3 rounded-xl text-left border transition-all duration-300 ${
-                              selectedAnswers[index] === option
-                                ? option === q.answer
-                                  ? "border-[#B3D8A8] bg-[#B3D8A8]/20 shadow-md shadow-[#B3D8A8]/20"
-                                  : "border-red-500 bg-red-900/30 shadow-md shadow-red-500/20"
-                                : answeredQuestions[index]
-                                  ? "border-[#B3D8A8]/30 opacity-70"
-                                  : "border-[#B3D8A8]/30 hover:border-[#82A878] hover:bg-[#B3D8A8]/10"
-                            }`}
-                            whileHover={!answeredQuestions[index] ? { scale: 1.02 } : {}}
-                            whileTap={!answeredQuestions[index] ? { scale: 0.98 } : {}}
-                            initial={{ opacity: 0, x: -10 }}
-                            animate={{ 
-                              opacity: 1, 
-                              x: 0,
-                              transition: { delay: 0.2 + (optIndex * 0.1) }
-                            }}
-                          >
-                            <span className="flex items-center">
-                              <span className="inline-flex items-center justify-center w-6 h-6 mr-3 rounded-full bg-gray-800 text-gray-300 text-sm">
-                                {String.fromCharCode(65 + optIndex)}
-                              </span>
-                              {option}
-                            </span>
-                          </motion.button>
-                        ))
-                      ) : (
-                        <p className="text-red-500">Options not available</p>
-                      )}
-                    </div>
+                      let btnStyle = "bg-black/40 border-white/10 hover:border-[#B3D8A8]/50 hover:bg-[#B3D8A8]/10 text-gray-200";
 
-                    <AnimatePresence>
-                      {showAnswers[index] && (
-                        <motion.div 
-                          className="mt-5"
-                          initial={{ opacity: 0, height: 0 }}
-                          animate={{ opacity: 1, height: "auto" }}
-                          exit={{ opacity: 0, height: 0 }}
-                          transition={{ duration: 0.3 }}
+                      if (hasAnswered) {
+                        if (isOptionCorrect) {
+                          btnStyle = "bg-green-950/60 border-green-500 text-green-200 shadow-md shadow-green-500/20";
+                        } else if (isOptionSelected && !isOptionCorrect) {
+                          btnStyle = "bg-red-950/60 border-red-500 text-red-200 shadow-md shadow-red-500/20";
+                        } else {
+                          btnStyle = "bg-black/30 border-white/5 text-gray-500 opacity-60";
+                        }
+                      }
+
+                      return (
+                        <button
+                          key={optIdx}
+                          disabled={hasAnswered}
+                          onClick={() => handleAnswerSelect(qIndex, option)}
+                          className={`p-3.5 rounded-xl border text-left flex items-start space-x-3 transition-all ${btnStyle}`}
                         >
-                          <div className="flex items-center">
-                            <p className="text-sm">
-                              Correct Answer: <span className="font-semibold text-green-400">{q.answer}</span>
-                            </p>
-                            {selectedAnswers[index] === q.answer ? (
-                              <motion.div
-                                initial={{ scale: 0 }}
-                                animate={{ scale: 1 }}
-                                transition={{ 
-                                  type: "spring", 
-                                  stiffness: 200, 
-                                  damping: 10,
-                                  delay: 0.2 
-                                }}
-                              >
-                                <CheckCircle className="ml-2 text-green-500 w-6 h-6" />
-                              </motion.div>
-                            ) : (
-                              <motion.div
-                                initial={{ scale: 0 }}
-                                animate={{ scale: 1 }}
-                                transition={{ 
-                                  type: "spring", 
-                                  stiffness: 200, 
-                                  damping: 10,
-                                  delay: 0.2 
-                                }}
-                              >
-                                <XCircle className="ml-2 text-red-500 w-6 h-6" />
-                              </motion.div>
-                            )}
-                            
-                            {/* Explanation toggle button */}
-                            <motion.button 
-                              onClick={() => toggleExplanation(index)}
-                              className="ml-4 px-4 py-1 bg-[#6A9C89] hover:bg-[#6A9C89]/80 rounded-lg text-xs flex items-center"
-                              whileHover={{ scale: 1.05 }}
-                              whileTap={{ scale: 0.95 }}
+                          <span className="w-6 h-6 rounded-lg bg-white/10 flex-shrink-0 text-xs font-bold flex items-center justify-center">
+                            {String.fromCharCode(65 + optIdx)}
+                          </span>
+                          <div className="flex-1 text-sm font-medium markdown-body prose prose-invert max-w-none">
+                            <ReactMarkdown
+                              remarkPlugins={[remarkGfm, remarkMath]}
+                              rehypePlugins={[rehypeRaw, rehypeKatex]}
                             >
-                              <Info className="w-4 h-4 mr-1" />
-                              {showExplanations[index] ? "Hide" : "Show"} Explanation
-                              {showExplanations[index] ? 
-                                <ChevronUp className="w-4 h-4 ml-1" /> : 
-                                <ChevronDown className="w-4 h-4 ml-1" />
-                              }
-                            </motion.button>
+                              {formatMathExpressions(option)}
+                            </ReactMarkdown>
                           </div>
-                          
-                          {/* Explanation section */}
-                          <AnimatePresence>
-                            {showExplanations[index] && (
-                              <motion.div 
-                                className="mt-3 p-4 bg-[#FFF5E4]/5 rounded-xl border-l-4 border-[#FFA725]"
-                                initial={{ opacity: 0, y: -10 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                exit={{ opacity: 0, y: -10 }}
-                                transition={{ duration: 0.2 }}
-                              >
-                                <p className="text-sm text-gray-200">{q.explanation}</p>
-                              </motion.div>
-                            )}
-                          </AnimatePresence>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                  </motion.div>
-                ))}
-              </div>
-              
-              {/* Control buttons */}
-              <motion.div 
-                className="flex flex-col md:flex-row space-y-3 md:space-y-0 md:space-x-4 mt-8"
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.5 }}
-              >
-                <motion.button
-                  onClick={resetQuiz}
-                  className="flex-1 px-4 py-3 rounded-xl bg-[#B3D8A8] text-black font-medium hover:bg-[#B3D8A8]/80 transition-colors duration-300 flex items-center justify-center"
-                  whileHover={{ scale: 1.03 }}
-                  whileTap={{ scale: 0.97 }}
-                >
-                  <RefreshCw className="w-4 h-4 mr-2" />
-                  Reset Answers
-                </motion.button>
-                
-                <motion.button
-                  onClick={generateNewQuiz}
-                  className="flex-1 px-4 py-3 rounded-xl bg-gradient-to-r from-[#B3D8A8] to-[#82A878] text-black font-medium hover:opacity-90 transition-all duration-300 flex items-center justify-center"
-                  whileHover={{ scale: 1.03 }}
-                  whileTap={{ scale: 0.97 }}
-                >
-                  <RefreshCw className="w-4 h-4 mr-2" />
-                  New Questions
-                </motion.button>
-                
-                <motion.button
-                  onClick={resetEntireQuiz}
-                  className="flex-1 px-4 py-3 rounded-xl bg-gray-600 text-white font-medium hover:bg-gray-700 transition-colors duration-300"
-                  whileHover={{ scale: 1.03 }}
-                  whileTap={{ scale: 0.97 }}
-                >
-                  Start Over
-                </motion.button>
-              </motion.div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+                        </button>
+                      );
+                    })}
+                  </div>
 
-        <AnimatePresence>
-          {!loading && quizStarted && (!quizData || quizData.length === 0) && (
-            <motion.div 
-              className="mt-8 p-6 rounded-xl bg-red-900/30 backdrop-blur-md border border-red-500/30 text-center"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
+                  {/* Explanation Toggle */}
+                  {hasAnswered && (
+                    <div className="mt-4 pt-3 border-t border-white/10">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-2 text-sm">
+                          {isCorrectAnswer ? (
+                            <span className="text-green-400 font-semibold flex items-center">
+                              <CheckCircle className="w-4 h-4 mr-1 text-green-400" />
+                              Correct (+{getPointsPerCorrect()} Credits)
+                            </span>
+                          ) : (
+                            <span className="text-red-400 font-semibold flex items-center">
+                              <XCircle className="w-4 h-4 mr-1 text-red-400" />
+                              Incorrect (Correct: {q.answer})
+                            </span>
+                          )}
+                        </div>
+
+                        <button
+                          onClick={() => toggleExplanation(qIndex)}
+                          className="text-xs text-gray-400 hover:text-[#B3D8A8] flex items-center space-x-1"
+                        >
+                          <Info className="w-3.5 h-3.5" />
+                          <span>{showExplanations[qIndex] ? "Hide" : "Show"} Explanation</span>
+                          {showExplanations[qIndex] ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                        </button>
+                      </div>
+
+                      {/* Explanation Content */}
+                      <AnimatePresence>
+                        {showExplanations[qIndex] && (
+                          <motion.div
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: "auto" }}
+                            exit={{ opacity: 0, height: 0 }}
+                            className="mt-3 p-3.5 bg-black/60 rounded-xl border border-white/10 text-xs sm:text-sm text-gray-300 leading-relaxed"
+                          >
+                            <ReactMarkdown
+                              remarkPlugins={[remarkGfm, remarkMath]}
+                              rehypePlugins={[rehypeRaw, rehypeKatex]}
+                            >
+                              {formatMathExpressions(q.explanation)}
+                            </ReactMarkdown>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
+                  )}
+                </motion.div>
+              );
+            })}
+          </div>
+
+          {/* Action Bar */}
+          <div className="flex flex-wrap gap-3 pt-4">
+            <button
+              onClick={resetQuiz}
+              className="py-3 px-5 bg-white/10 hover:bg-white/20 text-white font-semibold rounded-xl text-sm border border-white/15 transition-all flex items-center space-x-1.5"
             >
-              <p className="text-yellow-400">No questions were generated. Please try again with different parameters.</p>
-              <motion.button
-                onClick={resetEntireQuiz}
-                className="mt-4 px-6 py-2 rounded-lg bg-gray-600 text-white font-medium hover:bg-gray-700"
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-              >
-                Reset
-              </motion.button>
-            </motion.div>
-          )}
-        </AnimatePresence>
-        
-        <AnimatePresence>
-          {!loading && !quizStarted && (
-            <motion.div 
-              className="mt-12 p-6 rounded-xl bg-[#B3D8A8]/10 backdrop-blur-md border border-[#B3D8A8]/30 text-center"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.3 }}
+              <RefreshCw className="w-4 h-4" />
+              <span>Retry Quiz</span>
+            </button>
+            <button
+              onClick={() => startQuiz()}
+              className="py-3 px-5 bg-gradient-to-r from-[#B3D8A8] to-[#82A878] text-black font-bold rounded-xl text-sm hover:opacity-90 transition-all flex items-center space-x-1.5 shadow-md"
             >
-              <motion.div
-                animate={{ 
-                  y: [0, -10, 0],
-                }}
-                transition={{ 
-                  repeat: Infinity, 
-                  duration: 2,
-                  repeatType: "reverse"
-                }}
-              >
-                <Zap className="w-12 h-12 mx-auto text-[#B3D8A8] mb-3" />
-              </motion.div>
-              <p className="text-lg text-[#B3D8A8]">Enter course information and click "Start Quiz" to generate questions.</p>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </motion.div>
+              <Sparkles className="w-4 h-4 text-black" />
+              <span>Generate New Questions</span>
+            </button>
+            <button
+              onClick={resetEntireQuiz}
+              className="py-3 px-5 bg-gray-800 hover:bg-gray-700 text-gray-300 font-semibold rounded-xl text-sm transition-all"
+            >
+              Change Topic
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

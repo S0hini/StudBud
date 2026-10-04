@@ -8,7 +8,7 @@ import {
   User,
   AuthProvider
 } from 'firebase/auth';
-import { doc, setDoc, getDoc, updateDoc, onSnapshot } from 'firebase/firestore';
+import { doc, setDoc, getDoc, updateDoc, onSnapshot, increment } from 'firebase/firestore';
 import { auth, db } from './firebase';
 
 interface AuthState {
@@ -21,6 +21,7 @@ interface AuthState {
   signOut: () => Promise<void>;
   setUser: (user: User | null) => void;
   setCredits: (credits: number) => void;
+  awardCredits: (amount: number, isQuizCompletion?: boolean) => Promise<void>;
 }
 
 const handleAuthSuccess = async (user: User, set: any) => {
@@ -68,6 +69,24 @@ export const useAuthStore = create<AuthState>((set) => ({
     }
   },
   setCredits: (credits) => set({ credits }),
+  awardCredits: async (amount: number, isQuizCompletion = false) => {
+    const currentUser = useAuthStore.getState().user;
+    if (!currentUser || amount <= 0) return;
+
+    try {
+      const userRef = doc(db, 'users', currentUser.uid);
+      const updates: any = {
+        credits: increment(amount),
+        totalCreditsEarned: increment(amount)
+      };
+      if (isQuizCompletion) {
+        updates.totalQuizzesTaken = increment(1);
+      }
+      await updateDoc(userRef, updates);
+    } catch (err) {
+      console.error('Error awarding credits:', err);
+    }
+  },
 
   signInWithGoogle: async () => {
     try {
