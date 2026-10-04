@@ -4,14 +4,31 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import { db } from '../lib/firebase';
 import { collection, addDoc, getDocs, query, orderBy, where } from "firebase/firestore";
 import { useAuthStore } from '../lib/store';
+import { generateContent as generateWithGroq } from '../lib/gemini';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
 import rehypeRaw from 'rehype-raw';
+import rehypeKatex from 'rehype-katex';
+
+export const formatMathExpressions = (text: string): string => {
+  if (!text) return '';
+  return text
+    // Replace \[ ... \] with $$ ... $$
+    .replace(/\\\[([\s\S]*?)\\\]/g, '$$$$$1$$$$')
+    // Replace \( ... \) with $ ... $
+    .replace(/\\\(([\s\S]*?)\\\)/g, '$$$1$$')
+    // Replace parentheses around LaTeX symbols like (\infty) or (\lim_{...}) with $...$
+    .replace(/\((\\[a-zA-Z]+(?:\{[^}]*\}|[^)])*)\)/g, '$$$1$$')
+    // Replace parentheses around powers like (a^{\infty}) with $...$
+    .replace(/\(([a-zA-Z0-9_.\-]+(?:\^[a-zA-Z0-9_.\-{}]+)+)\)/g, '$$$1$$');
+};
 
 export function NotesPage() {
   const { user } = useAuthStore();
   const [loading, setLoading] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
+  const [translatingTranscript, setTranslatingTranscript] = useState(false);
   const [videoUrl, setVideoUrl] = useState('');
   const [videoId, setVideoId] = useState('');
   const [transcript, setTranscript] = useState('');
@@ -25,7 +42,7 @@ export function NotesPage() {
     videoUrl: string;
     videoTitle?: string;
     notes: string;
-    timestamp: { toDate: () => Date };
+    timestamp: any;
   }
 
   const [savedNotes, setSavedNotes] = useState<Note[]>([]);
@@ -51,9 +68,14 @@ export function NotesPage() {
   }, [videoUrl]);
 
   const extractVideoId = (url: string): string | null => {
-    const regExp = /^.*((youtu.be\/)|(v\/)|(\/u\/\w\/)|(embed\/)|(watch\?))\??v?=?([^#&?]*).*/;
-    const match = url.match(regExp);
-    return (match && match[7].length === 11) ? match[7] : null;
+    if (!url) return null;
+    const trimmed = url.trim();
+    if (/^[a-zA-Z0-9_-]{11}$/.test(trimmed)) {
+      return trimmed;
+    }
+    const regExp = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:watch\?.*v=|embed\/|v\/|shorts\/|live\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
+    const match = trimmed.match(regExp);
+    return match ? match[1] : null;
   };
 
   const fetchVideoData = async (id: string) => {
@@ -126,30 +148,91 @@ export function NotesPage() {
         await fetchVideoData(videoId);
       }
 
+      // Try fetching real transcript from backend
+      try {
+        const response = await fetch('/api/youtube/transcript', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ videoId, videoUrl })
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.transcript) {
+            setTranscript(data.transcript);
+            return data.transcript;
+          }
+        }
+      } catch (backendErr) {
+        console.warn("Backend transcript fetch failed, falling back to metadata:", backendErr);
+      }
+
+      // Fallback to video metadata if transcript is unavailable
       if (videoData) {
-        const simulatedTranscript =
-          `Since we don't have a backend server set up for transcript fetching, ` +
-          `we're generating notes based on the video metadata.\n\n` +
+        const fallback =
           `Video Title: ${videoData.title}\n\n` +
           `Video Description:\n${videoData.description}\n\n`;
 
-        setTranscript(simulatedTranscript);
-        return simulatedTranscript;
+        setTranscript(fallback);
+        return fallback;
       } else {
-        throw new Error("No video data available");
+        throw new Error("No video transcript or metadata available");
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error("Error fetching transcript:", err);
       setError("Failed to fetch video transcript. Using available video metadata for note generation.");
 
       const fallbackTranscript =
         "Transcript could not be fetched.\n\n" +
-        "For this demonstration, we'll generate notes based on the limited information available about this video.";
+        "Notes will be generated based on available video details.";
 
       setTranscript(fallbackTranscript);
       return fallbackTranscript;
     } finally {
       setTranscribing(false);
+    }
+  };
+
+  const translateTranscriptToEnglish = async () => {
+    if (!transcript) return;
+    setTranslatingTranscript(true);
+    setError("");
+
+    try {
+      const prompt = `Translate the following lecture transcript into clear, accurate English. Respond with ONLY the English translation, no other conversational text:\n\n${transcript.substring(0, 25000)}`;
+      let translated = "";
+
+      // Try backend
+      try {
+        const res = await fetch('/api/ai/tutor', {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'x-gemini-key': import.meta.env.VITE_PUBLIC_GEMINI_API_KEY || '',
+            'x-groq-key': import.meta.env.VITE_PUBLIC_GROQ_API_KEY || ''
+          },
+          body: JSON.stringify({ message: prompt })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.content) translated = data.content;
+        }
+      } catch (beErr) {
+        console.warn("Backend translation failed, trying client Groq...", beErr);
+      }
+
+      if (!translated) {
+        translated = await generateWithGroq(prompt);
+      }
+
+      if (translated) {
+        setTranscript(translated);
+      }
+    } catch (tErr: any) {
+      console.error("Translation error:", tErr);
+      setError(tErr?.message || "Failed to translate transcript.");
+    } finally {
+      setTranslatingTranscript(false);
     }
   };
 
@@ -180,11 +263,11 @@ export function NotesPage() {
         await fetchVideoData(videoId);
       }
 
-      const genAI = new GoogleGenerativeAI(import.meta.env.VITE_PUBLIC_GEMINI_API_KEY || '');
-      const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
+      const geminiApiKey = import.meta.env.VITE_PUBLIC_GEMINI_API_KEY || '';
+      const groqApiKey = import.meta.env.VITE_PUBLIC_GROQ_API_KEY || '';
 
-      let prompt = `Generate detailed, structured notes from this YouTube video: ${videoUrl}\n\n`;
-
+      let prompt = `You are an expert academic tutor. Generate comprehensive, well-structured academic notes in ENGLISH based on the following YouTube lecture:\n\n`;
+      prompt += `YouTube URL: ${videoUrl}\n\n`;
       if (videoData) {
         prompt += `Video Title: ${videoData.title}\n\n`;
         prompt += `Video Description: ${videoData.description}\n\n`;
@@ -195,25 +278,111 @@ export function NotesPage() {
       }
 
       prompt += `
-        Create comprehensive, well-organized notes with:
-        1. Main topics and subtopics with clear headings (use # for main headings, ## for subheadings)
-        2. Key points and important details under each topic (use bullet points with *)
-        3. Important definitions, concepts, and examples (use bold for key terms with **)
-        4. A summary of the main takeaways at the end
-        
-        Format the notes in proper Markdown with:
-        - Use # for main headings
-        - Use ## and ### for subheadings
-        - Use * or - for bullet points
-        - Use ** for bold text to emphasize important concepts
-        - Use > for quotes or important callouts
-        - Use \`code blocks\` for any code snippets or technical terms
+CRITICAL REQUIREMENT:
+Regardless of what language the video, title, description, or transcript is in (e.g. Arabic, Hindi, Spanish, etc.), write all notes strictly in clean, professional ENGLISH.
 
-        Ensure the Markdown is clean and properly formatted.`;
+Structure the notes as follows:
+# [Clear English Title for the Lecture]
 
-      const result = await model.generateContent(prompt);
-      const response = await result.response;
-      const generatedNotes = response.text();
+## 📌 Executive Overview
+* Concise 2-3 paragraph summary in English explaining the core concepts and takeaways.
+
+## 🎯 Key Concepts & Definitions
+* **[Key Term/Concept 1]**: Clear English explanation and definition.
+* **[Key Term/Concept 2]**: Clear English explanation and definition.
+* **[Key Term/Concept 3]**: Clear English explanation and definition.
+
+## 📝 Detailed Lecture Breakdown
+### 1. [Main Topic 1]
+* Detailed points with **bold** key terms.
+* Important formulas, theories, or mechanisms.
+### 2. [Main Topic 2]
+* In-depth details and context.
+
+## 💡 Practical Examples & Applications
+* Real-world applications or sample worked examples.
+
+## ✨ Summary Takeaways
+* Key points to remember for exams.
+
+MATHEMATICAL NOTATION FORMATTING:
+- For any mathematical expressions, powers, limits, equations, or formulas, always wrap them in standard LaTeX dollar delimiters:
+  - Inline formulas: $a^{\\infty}$, $\\lim_{x \\to a} f(x)$, $0^0$, $\\infty^0$
+  - Multi-line / display equations: $$ \\lim_{x\\to a} f(x)^{g(x)} = \\exp\\left( \\lim_{x\\to a} g(x) \\ln f(x) \\right) $$
+- Never output raw unformatted brackets or parentheses for formulas.
+
+Ensure all text is in fluent English with proper Markdown and LaTeX formatting.`;
+
+      let generatedNotes = "";
+
+      // 1. Try Backend Server Note Generation first
+      try {
+        const response = await fetch('/api/ai/generate-notes', {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'x-gemini-key': geminiApiKey,
+            'x-groq-key': groqApiKey
+          },
+          body: JSON.stringify({
+            videoUrl,
+            videoTitle: videoData?.title,
+            videoDescription: videoData?.description,
+            transcript: transcriptText
+          })
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.notes) {
+            generatedNotes = data.notes;
+          }
+        }
+      } catch (backendErr) {
+        console.warn("Backend note generation unreachable, trying client providers...", backendErr);
+      }
+
+      // 2. Try Client Gemini if backend didn't return notes
+      if (!generatedNotes && geminiApiKey) {
+        try {
+          const genAI = new GoogleGenerativeAI(geminiApiKey);
+          const candidateModels = ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-2.5-flash", "gemini-1.5-pro-latest", "gemini-1.5-flash-8b", "gemini-pro"];
+
+          for (const modelName of candidateModels) {
+            try {
+              const model = genAI.getGenerativeModel({ model: modelName });
+              const result = await model.generateContent(prompt);
+              const response = await result.response;
+              const text = response.text();
+              if (text) {
+                generatedNotes = text;
+                break;
+              }
+            } catch (mErr) {
+              console.warn(`Model ${modelName} failed, trying next...`, mErr);
+            }
+          }
+        } catch (geminiInitErr) {
+          console.warn("Gemini client error:", geminiInitErr);
+        }
+      }
+
+      // 3. Fallback to Groq if Gemini failed or is not available
+      if (!generatedNotes) {
+        try {
+          const groqResult = await generateWithGroq(prompt);
+          if (groqResult) {
+            generatedNotes = groqResult;
+          }
+        } catch (groqErr) {
+          console.warn("Groq fallback also failed:", groqErr);
+        }
+      }
+
+      if (!generatedNotes) {
+        throw new Error("Could not generate notes with configured AI keys. Please check VITE_PUBLIC_GEMINI_API_KEY or VITE_PUBLIC_GROQ_API_KEY in your .env file.");
+      }
+
       setNotes(generatedNotes);
 
       await addDoc(collection(db, "notes"), {
@@ -227,8 +396,8 @@ export function NotesPage() {
 
       await fetchNotes();
 
-    } catch (err) {
-      setError("Failed to generate notes. Please try again.");
+    } catch (err: any) {
+      setError(err?.message || "Failed to generate notes. Please try again.");
       console.error(err);
     } finally {
       setLoading(false);
@@ -353,9 +522,25 @@ export function NotesPage() {
 
           {transcript && (
             <div className="bg-[#B3D8A8]/10 backdrop-blur-lg rounded-xl p-6 mb-8 border border-[#B3D8A8]/30 shadow-lg">
-              <h2 className="text-xl font-semibold mb-4 text-[#B3D8A8]">Video Transcript</h2>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-semibold text-[#B3D8A8]">Video Transcript</h2>
+                <button
+                  onClick={translateTranscriptToEnglish}
+                  disabled={translatingTranscript}
+                  className="text-xs px-3 py-1.5 rounded-lg bg-gradient-to-r from-[#B3D8A8] to-[#82A878] text-black font-semibold hover:opacity-90 transition-all flex items-center space-x-1.5 disabled:opacity-50"
+                >
+                  {translatingTranscript ? (
+                    <>
+                      <div className="w-3.5 h-3.5 border-2 border-t-transparent border-solid rounded-full animate-spin border-black"></div>
+                      <span>Translating...</span>
+                    </>
+                  ) : (
+                    <span>🌐 Translate to English</span>
+                  )}
+                </button>
+              </div>
               <div className="max-h-60 overflow-y-auto bg-[#B3D8A8]/5 rounded-lg p-4 border border-[#B3D8A8]/20">
-                <pre className="whitespace-pre-wrap font-sans text-sm">{transcript}</pre>
+                <pre className="whitespace-pre-wrap font-sans text-sm text-gray-200">{transcript}</pre>
               </div>
             </div>
           )}
@@ -380,10 +565,10 @@ export function NotesPage() {
                 ) : (
                   <div className="max-h-[400px] overflow-y-auto p-4 custom-scrollbar markdown-body prose prose-invert prose-headings:text-[#B3D8A8] prose-a:text-[#B3D8A8] max-w-none">
                     <ReactMarkdown
-                      remarkPlugins={[remarkGfm]}
-                      rehypePlugins={[rehypeRaw]}
+                      remarkPlugins={[remarkGfm, remarkMath]}
+                      rehypePlugins={[rehypeRaw, rehypeKatex]}
                     >
-                      {notes}
+                      {formatMathExpressions(notes)}
                     </ReactMarkdown>
                   </div>
                 )}
@@ -402,7 +587,7 @@ export function NotesPage() {
                         {note.videoTitle || "Notes"}
                       </h3>
                       <p className="text-xs text-[#B3D8A8]/70">
-                        {note.timestamp.toDate().toLocaleString()}
+                        {note.timestamp?.toDate ? note.timestamp.toDate().toLocaleString() : new Date(note.timestamp || Date.now()).toLocaleString()}
                       </p>
                     </div>
                     <p className="text-xs text-[#B3D8A8]/70 mb-2 truncate">{note.videoUrl}</p>
@@ -411,10 +596,10 @@ export function NotesPage() {
                       <div className="h-[200px] overflow-y-auto p-3 custom-scrollbar">
                         <div className="markdown-body prose prose-invert prose-headings:text-[#B3D8A8] prose-a:text-[#B3D8A8] max-w-none prose-sm">
                           <ReactMarkdown
-                            remarkPlugins={[remarkGfm]}
-                            rehypePlugins={[rehypeRaw]}
+                            remarkPlugins={[remarkGfm, remarkMath]}
+                            rehypePlugins={[rehypeRaw, rehypeKatex]}
                           >
-                            {note.notes}
+                            {formatMathExpressions(note.notes)}
                           </ReactMarkdown>
                         </div>
                       </div>

@@ -2,9 +2,11 @@ import { create } from 'zustand';
 import { 
   signInWithPopup, 
   GoogleAuthProvider, 
+  GithubAuthProvider,
   signOut as firebaseSignOut,
   onAuthStateChanged,
-  User
+  User,
+  AuthProvider
 } from 'firebase/auth';
 import { doc, setDoc, getDoc, updateDoc, onSnapshot } from 'firebase/firestore';
 import { auth, db } from './firebase';
@@ -14,10 +16,41 @@ interface AuthState {
   credits: number;
   loading: boolean;
   signIn: () => Promise<void>;
+  signInWithGoogle: () => Promise<void>;
+  signInWithGithub: () => Promise<void>;
   signOut: () => Promise<void>;
   setUser: (user: User | null) => void;
   setCredits: (credits: number) => void;
 }
+
+const handleAuthSuccess = async (user: User, set: any) => {
+  let photoURL = user.photoURL;
+  if (photoURL) {
+    photoURL = `https://images.weserv.nl/?url=${encodeURIComponent(photoURL)}`;
+  } else {
+    photoURL = `https://ui-avatars.com/api/?name=${encodeURIComponent(user.displayName || 'User')}&background=random`;
+  }
+
+  const userRef = doc(db, 'users', user.uid);
+  const userDoc = await getDoc(userRef);
+
+  const userData = {
+    displayName: user.displayName || user.email?.split('@')[0] || 'Student',
+    email: user.email || `${user.uid}@github.user`,
+    photoURL: photoURL,
+    credits: userDoc.exists() ? (userDoc.data().credits ?? 100) : 100,
+    totalQuizzesTaken: userDoc.exists() ? (userDoc.data().totalQuizzesTaken ?? 0) : 0,
+    totalCreditsEarned: userDoc.exists() ? (userDoc.data().totalCreditsEarned ?? 0) : 0,
+    friends: userDoc.exists() ? (userDoc.data().friends ?? []) : [],
+    friendRequests: userDoc.exists() ? (userDoc.data().friendRequests ?? { sent: [], received: [] }) : { sent: [], received: [] },
+    lastLogin: new Date(),
+    createdAt: userDoc.exists() ? userDoc.data().createdAt : new Date(),
+    bio: userDoc.exists() ? (userDoc.data().bio ?? '') : '',
+  };
+
+  await setDoc(userRef, userData, { merge: true });
+  set({ user: { ...user, photoURL, displayName: userData.displayName } });
+};
 
 export const useAuthStore = create<AuthState>((set) => ({
   user: null,
@@ -26,10 +59,9 @@ export const useAuthStore = create<AuthState>((set) => ({
   setUser: (user) => {
     set({ user, loading: false });
     if (user) {
-      // Subscribe to user's credits in Firestore
-      const unsubscribe = onSnapshot(doc(db, 'users', user.uid), (doc) => {
-        if (doc.exists()) {
-          set({ credits: doc.data().credits || 0 });
+      const unsubscribe = onSnapshot(doc(db, 'users', user.uid), (docSnap) => {
+        if (docSnap.exists()) {
+          set({ credits: docSnap.data().credits || 0 });
         }
       });
       return () => unsubscribe();
@@ -37,59 +69,38 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
   setCredits: (credits) => set({ credits }),
 
-  signIn: async () => {
+  signInWithGoogle: async () => {
     try {
       const provider = new GoogleAuthProvider();
       provider.addScope('https://www.googleapis.com/auth/userinfo.profile');
       provider.addScope('https://www.googleapis.com/auth/userinfo.email');
       
       const result = await signInWithPopup(auth, provider);
-      const user = result.user;
-      
-      // Get Google-specific provider data
-      const googleUser = user.providerData.find(
-        (provider) => provider.providerId === 'google.com'
-      );
-
-      // Get photo URL and create a proxy URL to bypass ad blockers
-      let photoURL = googleUser?.photoURL || user.photoURL;
-      if (photoURL) {
-        // Use a proxy service to bypass ad blockers
-        photoURL = `https://images.weserv.nl/?url=${encodeURIComponent(photoURL)}`;
-      }
-
-      console.log('Proxied Photo URL:', photoURL);
-
-      const userRef = doc(db, 'users', user.uid);
-      const userDoc = await getDoc(userRef);
-
-      const userData = {
-        displayName: user.displayName,
-        email: user.email,
-        photoURL: photoURL,
-        credits: userDoc.exists() ? userDoc.data().credits : 0,
-        totalQuizzesTaken: userDoc.exists() ? userDoc.data().totalQuizzesTaken : 0,
-        totalCreditsEarned: userDoc.exists() ? userDoc.data().totalCreditsEarned : 0,
-        friends: userDoc.exists() ? userDoc.data().friends : [],
-        friendRequests: userDoc.exists() ? userDoc.data().friendRequests : { sent: [], received: [] },
-        lastLogin: new Date(),
-        createdAt: userDoc.exists() ? userDoc.data().createdAt : new Date(),
-        bio: userDoc.exists() ? userDoc.data().bio : '',
-      };
-
-      await setDoc(userRef, userData, { merge: true });
-
-      // When creating/updating user profile
-      await updateDoc(userRef, {
-        photoURL: user.photoURL, // From Google Auth
-        // ...other user data
-      });
-
-      set({ user: { ...user, photoURL } });
+      await handleAuthSuccess(result.user, set);
     } catch (error) {
-      console.error('Error during sign in:', error);
+      console.error('Error during Google sign in:', error);
       throw error;
     }
+  },
+
+  signInWithGithub: async () => {
+    try {
+      const provider = new GithubAuthProvider();
+      provider.addScope('read:user');
+      provider.addScope('user:email');
+
+      const result = await signInWithPopup(auth, provider);
+      await handleAuthSuccess(result.user, set);
+    } catch (error) {
+      console.error('Error during GitHub sign in:', error);
+      throw error;
+    }
+  },
+
+  signIn: async () => {
+    const provider = new GoogleAuthProvider();
+    const result = await signInWithPopup(auth, provider);
+    await handleAuthSuccess(result.user, set);
   },
 
   signOut: async () => {

@@ -1,14 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { Zap, Medal, UserPlus, Coins } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../lib/store';
-import { doc, updateDoc, increment } from 'firebase/firestore';
-import { db } from '../lib/firebase';
 
 export function CreditsPage() {
-  const { user, credits, setCredits } = useAuthStore();
-  const [loading, setLoading] = useState(false);
+  const navigate = useNavigate();
+  const { credits } = useAuthStore();
   const [isVisible, setIsVisible] = useState(false);
-  const [hoveredCard, setHoveredCard] = useState(null);
+  const [hoveredCard, setHoveredCard] = useState<number | null>(null);
   const [count, setCount] = useState(0);
   
   // Animation triggers
@@ -17,7 +16,7 @@ export function CreditsPage() {
     
     // Animate count up
     const timer = setTimeout(() => {
-      const increment = Math.ceil(credits / 50);
+      const increment = Math.ceil(credits / 50) || 1;
       if (count < credits) {
         setCount(prev => Math.min(prev + increment, credits));
       }
@@ -31,9 +30,10 @@ export function CreditsPage() {
       icon: Zap,
       title: 'Take a Quiz',
       description: 'Complete quizzes to earn credits and test your knowledge',
-      credits: 10,
+      credits: '10',
       action: 'Start Quiz',
-      color: 'purple'
+      color: 'purple',
+      path: '/quiz'
     },
     {
       icon: UserPlus,
@@ -41,7 +41,8 @@ export function CreditsPage() {
       description: 'Challenge your friends to quizzes and win their wagered credits',
       credits: '2x Wager',
       action: 'Find Friends',
-      color: 'blue'
+      color: 'blue',
+      path: '/friends'
     },
     {
       icon: Medal,
@@ -49,7 +50,8 @@ export function CreditsPage() {
       description: 'Compete in group quizzes to win the prize pool',
       credits: 'Prize Pool',
       action: 'Join Competition',
-      color: 'pink'
+      color: 'pink',
+      path: '/quiz'
     }
   ];
 
@@ -95,7 +97,7 @@ export function CreditsPage() {
         })}
       </div>
 
-      {/* Credit Balance - Apple-style component with animation */}
+      {/* Credit Balance */}
       <div 
         className={`max-w-5xl mx-auto mb-16 transition-all duration-1000 transform ${isVisible ? 'translate-y-0 opacity-100' : 'translate-y-10 opacity-0'}`}
       >
@@ -117,7 +119,7 @@ export function CreditsPage() {
         </div>
       </div>
 
-      {/* Activity Cards - Apple-style grid with animations */}
+      {/* Activity Cards */}
       <div className="max-w-5xl mx-auto">
         <h2 className={`text-2xl font-semibold mb-8 transition-all duration-1000 delay-300 transform ${isVisible ? 'translate-y-0 opacity-100' : 'translate-y-10 opacity-0'}`}>
           Earn More
@@ -142,7 +144,7 @@ export function CreditsPage() {
               
               <div className="relative z-10">
                 <activity.icon 
-                  className={`w-10 h-10 text-${activity.color}-400 mb-6`} 
+                  className="w-10 h-10 mb-6 text-[#B3D8A8]" 
                   strokeWidth={1.5} 
                   style={{
                     transform: hoveredCard === index ? 'scale(1.1)' : 'scale(1)',
@@ -158,12 +160,8 @@ export function CreditsPage() {
                     <span className="text-yellow-400 font-medium">{activity.credits}</span>
                   </div>
                   <button
-                    onClick={() => {
-                      // Redirect to Quiz Page
-                      window.location.href = '/quiz';
-                    }}
-                    disabled={loading}
-                    className="px-4 py-2 rounded-full bg-white text-black text-sm font-medium hover:bg-gray-200 transition-colors transform hover:scale-105 active:scale-95 transition-all duration-300"
+                    onClick={() => navigate(activity.path)}
+                    className="px-4 py-2 rounded-full bg-white text-black text-sm font-medium hover:bg-gray-200 transition-colors transform hover:scale-105 active:scale-95 duration-300"
                   >
                     {activity.action}
                   </button>
@@ -174,8 +172,7 @@ export function CreditsPage() {
         </div>
       </div>
       
-      {/* Global animation styles */}
-      <style jsx global>{`
+      <style>{`
         @keyframes pulse {
           0%, 100% { opacity: 0.2; }
           50% { opacity: 0.3; }

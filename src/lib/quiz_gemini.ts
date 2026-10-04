@@ -1,9 +1,3 @@
-const apiKey = import.meta.env.VITE_PUBLIC_GROQ_API_KEY;
-
-if (!apiKey) {
-  throw new Error("VITE_PUBLIC_GROQ_API_KEY is not defined in environment variables");
-}
-
 const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
 const MODEL_NAME = "openai/gpt-oss-120b"; // Stable default Groq model
 
@@ -12,6 +6,12 @@ export const getQuizQuestions = async (
   topic: string,
   level: string
 ): Promise<{ questions: { question: string; options: string[]; answer: string; explanation: string }[] }> => {
+  const apiKey = import.meta.env.VITE_PUBLIC_GROQ_API_KEY || '';
+  if (!apiKey) {
+    console.warn("VITE_PUBLIC_GROQ_API_KEY is not defined in environment variables");
+    return { questions: [] };
+  }
+
   try {
     const prompt = `
       Generate 10 multiple-choice questions (MCQs) on "${topic}" related to "${course}" 

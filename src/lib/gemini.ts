@@ -1,9 +1,5 @@
 // lib/groq.ts
-const apiKey = import.meta.env.VITE_PUBLIC_GROQ_API_KEY;
-
-if (!apiKey) {
-  throw new Error('VITE_PUBLIC_GROQ_API_KEY is not defined in environment variables');
-}
+const getApiKey = () => import.meta.env.VITE_PUBLIC_GROQ_API_KEY || '';
 
 const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
 const MODEL_NAME = "openai/gpt-oss-120b"; // Stable default Groq model
@@ -18,6 +14,11 @@ const startChat = async () => {
 // Generate content using the Groq API
 const generateContent = async (prompt: string, history: any[] = []) => {
   try {
+    const apiKey = getApiKey();
+    if (!apiKey) {
+      throw new Error('Groq API Key is not configured. Please set VITE_PUBLIC_GROQ_API_KEY in your .env file.');
+    }
+
     const messages = [
       ...history,
       { role: "user", content: prompt }

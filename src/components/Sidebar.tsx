@@ -53,10 +53,10 @@ export function Sidebar() {
 
   // Close sidebar when clicking outside on mobile
   useEffect(() => {
-    const handleClickOutside = (event) => {
+    const handleClickOutside = (event: MouseEvent) => {
       const sidebar = document.getElementById('sidebar');
-      if (windowWidth < 768 && sidebar && !sidebar.contains(event.target) && 
-          !event.target.closest('[data-sidebar-toggle]')) {
+      if (windowWidth < 768 && sidebar && !sidebar.contains(event.target as Node) && 
+          !(event.target as HTMLElement).closest?.('[data-sidebar-toggle]')) {
         setIsOpen(false);
       }
     };

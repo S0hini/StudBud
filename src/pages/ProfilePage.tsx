@@ -114,7 +114,7 @@ export function ProfilePage() {
     { icon: Trophy, label: 'Quizzes Taken', value: profile.totalQuizzesTaken },
     { icon: Coins, label: 'Total Credits Earned', value: profile.totalCreditsEarned },
     { icon: Users, label: 'Current Credits', value: profile.credits },
-    { icon: Clock, label: 'Member Since', value: new Date(profile.createdAt?.toDate()).toLocaleDateString() }
+    { icon: Clock, label: 'Member Since', value: profile.createdAt?.toDate ? profile.createdAt.toDate().toLocaleDateString() : (profile.createdAt ? new Date(profile.createdAt).toLocaleDateString() : 'N/A') }
   ];
 
   return (

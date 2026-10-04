@@ -14,6 +14,7 @@ import { ProfilePage } from './pages/ProfilePage';
 import QuizPage from './pages/QuizPage';
 import { LoginPage } from './pages/LoginPage';
 import { QuizBattlePage } from './pages/QuizBattlePage';
+import 'katex/dist/katex.min.css';
 import './index.css';
 
 const ProtectedRoute = () => {
