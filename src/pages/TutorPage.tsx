@@ -5,7 +5,13 @@ import { useAuthStore } from '../lib/store';
 import { collection, addDoc, query, where, orderBy, onSnapshot, serverTimestamp } from 'firebase/firestore';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { generateContent } from '../lib/gemini'; // Import Groq API wrapper
+import { generateContent } from '../lib/gemini';
+import { formatMathExpressions } from '../lib/mathFormatter';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeRaw from 'rehype-raw';
+import rehypeKatex from 'rehype-katex';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -13,10 +19,6 @@ interface Message {
   timestamp: any;
   id?: string;
 }
-
-const formatMessage = (text: string) => {
-  return text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-};
 
 export function TutorPage() {
   const { user } = useAuthStore();
@@ -101,8 +103,12 @@ export function TutorPage() {
           content: msg.content
         }));
 
-        const templatePrompt = `Please explain the topic: "${userMessage}"
+        const templatePrompt = `Please explain the topic: "${userMessage}" in ENGLISH.
 Use bold text with markdown formatting (e.g., **word**) for important terms.
+For any mathematical formulas, equations, or limits, always format with LaTeX delimiters:
+- Inline math: $a^{\\infty}$, $\\lim_{x \\to a} f(x)$, $0^0$, $\\infty^0$
+- Display math: $$ \\lim_{x\\to a} f(x)^{g(x)} = \\exp\\left( \\lim_{x\\to a} g(x) \\ln f(x) \\right) $$
+
 Provide a comprehensive explanation in the following format:
 📌 **BRIEF OVERVIEW:**
 [Provide a 2-3 sentence introduction to the topic, using **bold** for key terms]
@@ -112,17 +118,16 @@ Provide a comprehensive explanation in the following format:
 • **[Key term 3]**: [Definition]
 📝 **DETAILED EXPLANATION:**
 • **[Main concept 1]**
-  - [Detailed explanation with **bold** key terms]
+  - [Detailed explanation with **bold** key terms and clear LaTeX math if applicable]
   - [Supporting details]
 • **[Main concept 2]**
   - [Detailed explanation with **bold** key terms]
   - [Supporting details]
 💡 **EXAMPLES:**
-• **Example 1**: [Practical application]
+• **Example 1**: [Practical application or worked equation]
 • **Example 2**: [Practical application]
 ✨ **SUMMARY:**
-[Brief summary highlighting **key terms** and main points]
-Remember to use **bold** formatting (with double asterisks) for important terms and concepts throughout the explanation.`;
+[Brief summary highlighting **key terms** and main points]`;
 
         // Call Groq API
         const aiMessage = await generateContent(templatePrompt, chatHistory);
@@ -169,8 +174,8 @@ Remember to use **bold** formatting (with double asterisks) for important terms 
 
         {/* Chat Container */}
         <div className="bg-[#B3D8A8]/10 backdrop-blur-lg rounded-2xl p-6 border border-[#B3D8A8]/30 shadow-lg shadow-[#B3D8A8]/10">
-          <div className="h-[500px] flex flex-col">
-            <div className="flex-1 overflow-y-auto space-y-4 mb-4 scrollbar-thin scrollbar-thumb-[#B3D8A8]/20 scrollbar-track-transparent">
+          <div className="h-[520px] flex flex-col">
+            <div className="flex-1 overflow-y-auto space-y-4 mb-4 scrollbar-thin scrollbar-thumb-[#B3D8A8]/20 scrollbar-track-transparent pr-1">
               {messages.map((message, index) => (
                 <div
                   key={message.id || index}
@@ -179,27 +184,33 @@ Remember to use **bold** formatting (with double asterisks) for important terms 
                   }`}
                 >
                   <div
-                    className={`max-w-[80%] rounded-2xl p-4 ${
+                    className={`max-w-[85%] rounded-2xl p-4 ${
                       message.role === 'assistant'
-                        ? 'bg-[#B3D8A8]/5 border border-[#B3D8A8]/30'
-                        : 'bg-gradient-to-r from-[#B3D8A8] to-[#82A878] text-black'
+                        ? 'bg-[#B3D8A8]/5 border border-[#B3D8A8]/30 text-gray-100'
+                        : 'bg-gradient-to-r from-[#B3D8A8] to-[#82A878] text-black font-medium'
                     }`}
                   >
-                    <div className="flex items-start space-x-2">
+                    <div className="flex items-start space-x-2.5">
                       {message.role === 'assistant' && (
-                        <Bot className="w-5 h-5 mt-1 text-[#B3D8A8]" />
+                        <Bot className="w-5 h-5 mt-1 text-[#B3D8A8] flex-shrink-0" />
                       )}
                       {message.role === 'user' && (
-                        <User className="w-5 h-5 mt-1" />
+                        <User className="w-5 h-5 mt-1 flex-shrink-0" />
                       )}
-                      <p 
-                        className="whitespace-pre-wrap"
-                        dangerouslySetInnerHTML={{ 
-                          __html: message.role === 'assistant' 
-                            ? formatMessage(message.content) 
-                            : message.content 
-                        }}
-                      />
+                      <div className="flex-1 overflow-x-auto text-sm leading-relaxed">
+                        {message.role === 'assistant' ? (
+                          <div className="markdown-body prose prose-invert prose-headings:text-[#B3D8A8] prose-a:text-[#B3D8A8] max-w-none prose-sm">
+                            <ReactMarkdown
+                              remarkPlugins={[remarkGfm, remarkMath]}
+                              rehypePlugins={[rehypeRaw, rehypeKatex]}
+                            >
+                              {formatMathExpressions(message.content)}
+                            </ReactMarkdown>
+                          </div>
+                        ) : (
+                          <p className="whitespace-pre-wrap">{message.content}</p>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>

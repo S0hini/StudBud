@@ -1,864 +1,594 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Loader, Video, BookOpen, Sparkles, ExternalLink } from 'lucide-react';
+import { Search, Loader, Video, BookOpen, Sparkles, ExternalLink, Play, HelpCircle, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useNavigate } from 'react-router-dom';
 
-interface VideoSuggestion {
+interface LectureVideo {
+  id?: string;
   title: string;
   url: string;
   description: string;
-  isValid?: boolean;
-  checkingStatus?: boolean;
-  viewCount?: string;
+  thumbnail?: string;
   channelName?: string;
-  subscribers?: string;
-  subjects: string[]; // Array of relevant subjects
-  topics: string[];   // Array of relevant topics
-  relevanceScore?: number; // Score to rank relevance
+  publishedAt?: string;
+  viewCount?: string;
+  isAiCurated?: boolean;
+}
+
+// Decode HTML entities in YouTube titles
+function decodeHtmlEntities(str: string): string {
+  if (!str) return '';
+  const txt = document.createElement('textarea');
+  txt.innerHTML = str;
+  return txt.value;
 }
 
 export function LecturesPage() {
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [subject, setSubject] = useState('');
   const [topic, setTopic] = useState('');
-  const [suggestions, setSuggestions] = useState<VideoSuggestion[]>([]);
-  const [filteredSuggestions, setFilteredSuggestions] = useState<VideoSuggestion[]>([]);
+  const [lectures, setLectures] = useState<LectureVideo[]>([]);
   const [error, setError] = useState('');
-  const [isFormValid, setIsFormValid] = useState(false);
-  const [activeTab, setActiveTab] = useState<number | null>(null);
-  const [validationComplete, setValidationComplete] = useState(false);
-  const [validatingLinks, setValidatingLinks] = useState(false);
+  const [activeModalVideo, setActiveModalVideo] = useState<LectureVideo | null>(null);
+  const [searchHistory, setSearchHistory] = useState<string[]>([]);
 
-  // Check form validity whenever inputs change
-  useEffect(() => {
-    setIsFormValid(!!subject.trim() && !!topic.trim());
-  }, [subject, topic]);
+  // Popular search suggestions
+  const popularPresets = [
+    { subject: "GATE CSE", topic: "limit continuity gate" },
+    { subject: "GATE CSE", topic: "Graph Theory & Trees" },
+    { subject: "Computer Science", topic: "Operating Systems Process Synchronization" },
+    { subject: "Mathematics", topic: "Calculus Limits and Continuity" },
+    { subject: "Engineering", topic: "Linear Algebra Eigenvalues" },
+    { subject: "Programming", topic: "Data Structures & Algorithms" },
+    { subject: "Physics", topic: "Quantum Mechanics Wave Function" },
+    { subject: "Chemistry", topic: "Organic Chemistry Reaction Mechanisms" }
+  ];
 
-  // Calculate string similarity (Levenshtein distance) for fuzzy matching
-  const stringSimilarity = (str1: string, str2: string): number => {
-    const track = Array(str2.length + 1).fill(null).map(() => 
-      Array(str1.length + 1).fill(null));
-    
-    for (let i = 0; i <= str1.length; i += 1) {
-      track[0][i] = i;
+  const searchYouTubeApi = async (query: string): Promise<LectureVideo[]> => {
+    const apiKey = import.meta.env.VITE_YOUTUBE_API_KEY;
+    if (!apiKey) return [];
+
+    const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=8&q=${encodeURIComponent(
+      query
+    )}&type=video&key=${apiKey}`;
+
+    const res = await fetch(url);
+    if (!res.ok) {
+      throw new Error(`YouTube API returned ${res.status}`);
     }
-    
-    for (let j = 0; j <= str2.length; j += 1) {
-      track[j][0] = j;
-    }
-    
-    for (let j = 1; j <= str2.length; j += 1) {
-      for (let i = 1; i <= str1.length; i += 1) {
-        const indicator = str1[i - 1] === str2[j - 1] ? 0 : 1;
-        track[j][i] = Math.min(
-          track[j][i - 1] + 1, // deletion
-          track[j - 1][i] + 1, // insertion
-          track[j - 1][i - 1] + indicator, // substitution
-        );
-      }
-    }
-    
-    // Convert distance to similarity score (0-100)
-    const maxLength = Math.max(str1.length, str2.length);
-    if (maxLength === 0) return 100; // Both strings are empty
-    
-    const distance = track[str2.length][str1.length];
-    return (1 - distance / maxLength) * 100;
+
+    const data = await res.json();
+    if (!data.items || data.items.length === 0) return [];
+
+    return data.items.map((item: any) => ({
+      id: item.id?.videoId,
+      title: decodeHtmlEntities(item.snippet.title),
+      description: decodeHtmlEntities(item.snippet.description),
+      thumbnail:
+        item.snippet.thumbnails?.high?.url ||
+        item.snippet.thumbnails?.medium?.url ||
+        `https://img.youtube.com/vi/${item.id?.videoId}/hqdefault.jpg`,
+      channelName: decodeHtmlEntities(item.snippet.channelTitle),
+      url: `https://www.youtube.com/watch?v=${item.id?.videoId}`,
+      publishedAt: item.snippet.publishedAt ? new Date(item.snippet.publishedAt).toLocaleDateString() : undefined
+    }));
   };
-  
-  // This function returns known working YouTube video URLs for the given subject and topic
-  const getWorkingYouTubeVideos = (subj: string, top: string): VideoSuggestion[] => {
-    const searchSubject = subj.toLowerCase().trim();
-    const searchTopic = top.toLowerCase().trim();
-    
-    // Extract keywords from search topic
-    const topicKeywords = searchTopic.split(/\s+/).filter(word => word.length > 2);
-    
-    // Define all available videos with their subjects and topics
-    const allVideos: VideoSuggestion[] = [
-      // Mathematics videos
+
+  const searchBackendApi = async (query: string, subj: string, top: string): Promise<LectureVideo[]> => {
+    const res = await fetch('/api/youtube/search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query, subject: subj, topic: top })
+    });
+
+    if (!res.ok) {
+      throw new Error(`Backend YouTube search failed: ${res.status}`);
+    }
+
+    const data = await res.json();
+    if (data.results && data.results.length > 0) {
+      return data.results.map((r: any) => ({
+        id: r.id,
+        title: decodeHtmlEntities(r.title),
+        description: decodeHtmlEntities(r.description),
+        thumbnail: r.thumbnail || (r.id ? `https://img.youtube.com/vi/${r.id}/hqdefault.jpg` : undefined),
+        channelName: decodeHtmlEntities(r.channelName),
+        url: r.url,
+        publishedAt: r.publishedAt ? new Date(r.publishedAt).toLocaleDateString() : undefined
+      }));
+    }
+    return [];
+  };
+
+  const getAiRecommendations = async (subj: string, top: string): Promise<LectureVideo[]> => {
+    try {
+      const res = await fetch('/api/ai/recommend-lectures', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ subject: subj, topic: top })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.recommendations && data.recommendations.length > 0) {
+          return data.recommendations.map((rec: any) => ({
+            title: rec.title,
+            channelName: rec.channelName,
+            description: rec.description,
+            url: `https://www.youtube.com/results?search_query=${encodeURIComponent(rec.searchQuery || `${top} lecture`)}`,
+            isAiCurated: true
+          }));
+        }
+      }
+    } catch (aiErr) {
+      console.warn("AI recommendation fallback failed:", aiErr);
+    }
+
+    // Default fallback
+    return [
       {
-        title: "Introduction to Calculus",
-        url: "https://www.youtube.com/watch?v=HfACrKJ_Y2w",
-        description: "3Blue1Brown explains the essence of calculus with beautiful animations and intuitive explanations.",
-        viewCount: "8.2M views",
-        channelName: "3Blue1Brown",
-        subscribers: "4.7M subscribers",
-        subjects: ["mathematics", "math", "calculus", "engineering mathematics"],
-        topics: ["calculus", "derivatives", "integrals", "limits", "differentiation", "integration", "functions"]
+        title: `${top} - Complete Video Lecture & Concept Breakdown`,
+        channelName: `${subj || 'Academic'} Educator`,
+        description: `Comprehensive video lecture covering core concepts, solved numericals, and syllabus requirements for ${top}.`,
+        url: `https://www.youtube.com/results?search_query=${encodeURIComponent(`${subj} ${top} lecture`)}`,
+        isAiCurated: true
       },
       {
-        title: "Linear Algebra Done Right",
-        url: "https://www.youtube.com/watch?v=fNk_zzaMoSs",
-        description: "Comprehensive introduction to linear algebra with geometric intuition.",
-        viewCount: "3.4M views",
-        channelName: "3Blue1Brown",
-        subscribers: "4.7M subscribers",
-        subjects: ["mathematics", "math", "algebra", "engineering mathematics"],
-        topics: ["linear algebra", "vectors", "matrices", "transformations", "eigenvalues", "eigenvectors", "linear transformations", "vector spaces"]
-      },
-      {
-        title: "Understanding Probability and Statistics",
-        url: "https://www.youtube.com/watch?v=uzkc-qNVoOk",
-        description: "Clear explanation of probability theory and statistical methods for beginners.",
-        viewCount: "1.9M views",
-        channelName: "StatQuest with Josh Starmer",
-        subscribers: "1.2M subscribers",
-        subjects: ["mathematics", "math", "statistics", "data science"],
-        topics: ["probability", "statistics", "distributions", "hypothesis testing", "confidence intervals", "statistical inference"]
-      },
-      {
-        title: "Differential Equations Made Easy",
-        url: "https://www.youtube.com/watch?v=p_di4Zn4wz4",
-        description: "Learn differential equations with step-by-step explanations and real-world applications.",
-        viewCount: "2.3M views",
-        channelName: "The Organic Chemistry Tutor",
-        subscribers: "4.8M subscribers",
-        subjects: ["mathematics", "math", "calculus", "engineering mathematics"],
-        topics: ["differential equations", "ODEs", "PDEs", "equations", "calculus", "advanced calculus"]
-      },
-      {
-        title: "Introduction to Number Theory",
-        url: "https://www.youtube.com/watch?v=tNWqFmgW4ZI",
-        description: "Comprehensive introduction to elementary number theory and its applications in cryptography.",
-        viewCount: "840K views",
-        channelName: "Numberphile",
-        subscribers: "3.6M subscribers",
-        subjects: ["mathematics", "math", "number theory", "discrete mathematics"],
-        topics: ["number theory", "prime numbers", "modular arithmetic", "cryptography", "encryption", "RSA"]
-      },
-      // Physics videos
-      {
-        title: "Quantum Mechanics for Beginners",
-        url: "https://www.youtube.com/watch?v=xnt2xSNRNn0",
-        description: "Dr. Quantum explains the fundamental concepts of quantum mechanics for beginners.",
-        viewCount: "2.5M views",
-        channelName: "PBS Space Time",
-        subscribers: "3.1M subscribers",
-        subjects: ["physics", "quantum physics", "theoretical physics"],
-        topics: ["quantum mechanics", "quantum physics", "quantum theory", "wave function", "uncertainty principle", "quantum entanglement", "double slit experiment"]
-      },
-      {
-        title: "Special Relativity Made Simple",
-        url: "https://www.youtube.com/watch?v=msVuCEs8Ydo",
-        description: "Easy to follow explanation of Einstein's theory of special relativity.",
-        viewCount: "4.8M views",
-        channelName: "Veritasium",
-        subscribers: "13.2M subscribers",
-        subjects: ["physics", "relativity", "theoretical physics"],
-        topics: ["relativity", "special relativity", "einstein", "space-time", "speed of light", "time dilation", "length contraction"]
-      },
-      {
-        title: "The Four Fundamental Forces of Physics",
-        url: "https://www.youtube.com/watch?v=8c6lbGxstZE",
-        description: "Comprehensive explanation of the four fundamental forces: gravity, electromagnetism, strong and weak nuclear forces.",
-        viewCount: "3.7M views",
-        channelName: "SciShow",
-        subscribers: "7.2M subscribers",
-        subjects: ["physics", "particle physics", "fundamental physics"],
-        topics: ["forces", "fundamental forces", "gravity", "electromagnetism", "strong force", "weak force", "particles", "standard model"]
-      },
-      {
-        title: "Thermodynamics: Crash Course Physics",
-        url: "https://www.youtube.com/watch?v=2z1eSWRnsBE",
-        description: "Complete introduction to the laws of thermodynamics and their applications.",
-        viewCount: "1.8M views",
-        channelName: "CrashCourse",
-        subscribers: "14.1M subscribers",
-        subjects: ["physics", "thermodynamics", "engineering physics"],
-        topics: ["thermodynamics", "heat", "energy", "entropy", "work", "temperature", "laws of thermodynamics", "heat engines"]
-      },
-      // Computer Science videos
-      {
-        title: "Data Structures Easy to Advanced Course",
-        url: "https://www.youtube.com/watch?v=RBSGKlAvoiM",
-        description: "Complete course covering all major data structures with code examples.",
-        viewCount: "3.1M views",
-        channelName: "freeCodeCamp.org",
-        subscribers: "7.5M subscribers",
-        subjects: ["computer science", "cs", "programming", "software engineering"],
-        topics: ["data structures", "algorithms", "linked lists", "trees", "graphs", "hash tables", "stacks", "queues"]
-      },
-      {
-        title: "Learn JavaScript - Full Course for Beginners",
-        url: "https://www.youtube.com/watch?v=PkZNo7MFNFg",
-        description: "Complete JavaScript tutorial for absolute beginners.",
-        viewCount: "9.7M views",
-        channelName: "freeCodeCamp.org",
-        subscribers: "7.5M subscribers",
-        subjects: ["computer science", "programming", "web development", "software engineering"],
-        topics: ["javascript", "programming", "web development", "frontend", "js", "es6", "web"]
-      },
-      {
-        title: "Machine Learning Fundamentals",
-        url: "https://www.youtube.com/watch?v=mLHf6kgZ9e0",
-        description: "Comprehensive introduction to machine learning algorithms and techniques.",
-        viewCount: "2.4M views",
-        channelName: "StatQuest with Josh Starmer",
-        subscribers: "1.2M subscribers",
-        subjects: ["computer science", "machine learning", "ai", "data science"],
-        topics: ["machine learning", "ml", "neural networks", "deep learning", "algorithms", "supervised learning", "unsupervised learning", "reinforcement learning"]
-      },
-      {
-        title: "Database Design Course - Learn how to design and plan a database for beginners",
-        url: "https://www.youtube.com/watch?v=ztHopE5Wnpc",
-        description: "Complete guide to database design principles and SQL fundamentals.",
-        viewCount: "1.6M views",
-        channelName: "freeCodeCamp.org",
-        subscribers: "7.5M subscribers",
-        subjects: ["computer science", "database", "programming", "software engineering"],
-        topics: ["database", "sql", "database design", "normalization", "erd", "relational database", "nosql", "schemas"]
-      },
-      {
-        title: "Operating Systems: Crash Course Computer Science",
-        url: "https://www.youtube.com/watch?v=26QPDBe-NB8",
-        description: "Comprehensive overview of operating systems and their components.",
-        viewCount: "1.2M views",
-        channelName: "CrashCourse",
-        subscribers: "14.1M subscribers",
-        subjects: ["computer science", "operating systems", "systems programming"],
-        topics: ["operating systems", "os", "kernel", "processes", "memory management", "file systems", "scheduling", "concurrency"]
-      },
-      // Biology videos
-      {
-        title: "Introduction to Cells: The Grand Cell Tour",
-        url: "https://www.youtube.com/watch?v=8IlzKri08kk",
-        description: "Comprehensive tour of cellular structure and function with detailed animations.",
-        viewCount: "3.2M views",
-        channelName: "Amoeba Sisters",
-        subscribers: "2.4M subscribers",
-        subjects: ["biology", "cellular biology", "life sciences"],
-        topics: ["cells", "cell biology", "cell structure", "biology basics", "organelles", "eukaryotes", "prokaryotes"]
-      },
-      {
-        title: "DNA Structure and Replication: Crash Course Biology",
-        url: "https://www.youtube.com/watch?v=8kK2zwjRV0M",
-        description: "Clear explanation of DNA structure and how it replicates.",
-        viewCount: "5.7M views",
-        channelName: "CrashCourse",
-        subscribers: "14.1M subscribers",
-        subjects: ["biology", "molecular biology", "genetics", "life sciences"],
-        topics: ["dna", "genetics", "molecular biology", "replication", "nucleotides", "double helix", "transcription", "translation"]
-      },
-      {
-        title: "Human Evolution: Crash Course Big History",
-        url: "https://www.youtube.com/watch?v=UPggkvB9_dc",
-        description: "Detailed overview of human evolution from early hominids to modern humans.",
-        viewCount: "2.1M views",
-        channelName: "CrashCourse",
-        subscribers: "14.1M subscribers",
-        subjects: ["biology", "evolutionary biology", "anthropology", "paleontology"],
-        topics: ["evolution", "human evolution", "natural selection", "adaptation", "hominids", "genetics", "Darwin"]
-      },
-      {
-        title: "Introduction to Ecology - Organisms and Their Environment",
-        url: "https://www.youtube.com/watch?v=sjE-Pkjp3u4",
-        description: "Comprehensive introduction to ecological principles and environmental interactions.",
-        viewCount: "1.3M views",
-        channelName: "Khan Academy",
-        subscribers: "8.2M subscribers",
-        subjects: ["biology", "ecology", "environmental science", "life sciences"],
-        topics: ["ecology", "ecosystems", "biomes", "population", "communities", "food webs", "energy flow", "biogeochemical cycles"]
-      },
-      // History videos
-      {
-        title: "The French Revolution: Crash Course World History",
-        url: "https://www.youtube.com/watch?v=5fJl_ZX91l0",
-        description: "Comprehensive overview of the French Revolution and its global impact.",
-        viewCount: "6.8M views",
-        channelName: "CrashCourse",
-        subscribers: "14.1M subscribers",
-        subjects: ["history", "european history", "political history", "revolution"],
-        topics: ["french revolution", "european history", "revolution", "18th century", "napoleon", "robespierre", "enlightenment", "monarchy"]
-      },
-      {
-        title: "World War II: Crash Course World History",
-        url: "https://www.youtube.com/watch?v=Q78COTwT7nE",
-        description: "Complete overview of World War II with key events and analysis.",
-        viewCount: "8.5M views",
-        channelName: "CrashCourse",
-        subscribers: "14.1M subscribers",
-        subjects: ["history", "world history", "military history", "20th century"],
-        topics: ["world war ii", "ww2", "20th century", "war history", "hitler", "nazis", "allied powers", "axis powers", "holocaust"]
-      },
-      {
-        title: "The Rise and Fall of the Roman Empire",
-        url: "https://www.youtube.com/watch?v=VO3nTx2dDWs",
-        description: "Comprehensive history of the Roman Empire from founding to fall.",
-        viewCount: "4.2M views",
-        channelName: "Historia Civilis",
-        subscribers: "1.3M subscribers",
-        subjects: ["history", "ancient history", "roman history", "classical history"],
-        topics: ["roman empire", "ancient rome", "caesar", "augustus", "constantine", "republic", "emperors", "classical history"]
-      },
-      {
-        title: "American Civil War - A Complete History",
-        url: "https://www.youtube.com/watch?v=rY9zHNOjGrs",
-        description: "Detailed analysis of the causes, major battles, and consequences of the American Civil War.",
-        viewCount: "3.8M views",
-        channelName: "Oversimplified",
-        subscribers: "6.5M subscribers",
-        subjects: ["history", "american history", "us history", "military history"],
-        topics: ["civil war", "american civil war", "lincoln", "confederacy", "union", "slavery", "reconstruction", "gettysburg"]
-      },
-      // Chemistry videos
-      {
-        title: "Introduction to the Periodic Table",
-        url: "https://www.youtube.com/watch?v=UIJjmcB8Fvk",
-        description: "Learn how the periodic table is organized and what it tells us about elements.",
-        viewCount: "2.3M views",
-        channelName: "Khan Academy",
-        subscribers: "8.2M subscribers",
-        subjects: ["chemistry", "inorganic chemistry", "physical chemistry"],
-        topics: ["periodic table", "elements", "chemistry basics", "atomic structure", "periodic trends", "electron configuration", "mendeleev"]
-      },
-      {
-        title: "Chemical Bonding - Ionic vs. Covalent Bonds",
-        url: "https://www.youtube.com/watch?v=QqjcCvzWwww",
-        description: "Clear explanation of different types of chemical bonds with examples.",
-        viewCount: "3.1M views",
-        channelName: "The Organic Chemistry Tutor",
-        subscribers: "4.8M subscribers",
-        subjects: ["chemistry", "inorganic chemistry", "physical chemistry"],
-        topics: ["chemical bonding", "ionic bonds", "covalent bonds", "molecular structure", "electronegativity", "atomic bonds", "lewis structures"]
-      },
-      {
-        title: "Organic Chemistry Introduction",
-        url: "https://www.youtube.com/watch?v=bSMx0NS0XfY",
-        description: "Comprehensive overview of organic chemistry principles and carbon compounds.",
-        viewCount: "2.7M views",
-        channelName: "The Organic Chemistry Tutor",
-        subscribers: "4.8M subscribers",
-        subjects: ["chemistry", "organic chemistry", "biochemistry"],
-        topics: ["organic chemistry", "carbon compounds", "functional groups", "nomenclature", "isomers", "hydrocarbons", "reactions"]
-      },
-      {
-        title: "Introduction to Acids and Bases",
-        url: "https://www.youtube.com/watch?v=xi8U7bCOm6c",
-        description: "Clear explanation of acid-base theory, pH, and chemical equilibria.",
-        viewCount: "1.8M views",
-        channelName: "Khan Academy",
-        subscribers: "8.2M subscribers",
-        subjects: ["chemistry", "inorganic chemistry", "physical chemistry"],
-        topics: ["acids", "bases", "pH", "buffers", "titration", "neutralization", "acid-base reactions", "equilibrium"]
-      },
-      // Programming videos
-      {
-        title: "Python for Beginners - Full Course",
-        url: "https://www.youtube.com/watch?v=_uQrJ0TkZlc",
-        description: "Complete Python tutorial covering all the basics with hands-on exercises.",
-        viewCount: "28.4M views",
-        channelName: "Programming with Mosh",
-        subscribers: "4.2M subscribers",
-        subjects: ["programming", "computer science", "software development", "python"],
-        topics: ["python", "programming", "coding", "beginner", "python basics", "functions", "classes", "data structures"]
-      },
-      {
-        title: "React Tutorial for Beginners",
-        url: "https://www.youtube.com/watch?v=Rh3tobg7hEo",
-        description: "Learn React from scratch with practical examples and projects.",
-        viewCount: "2.1M views",
-        channelName: "Academind",
-        subscribers: "2.1M subscribers",
-        subjects: ["programming", "web development", "frontend", "javascript", "react"],
-        topics: ["react", "javascript", "frontend", "web development", "components", "hooks", "jsx", "state management"]
-      },
-      {
-        title: "Learn C++ Programming - Beginner to Advanced",
-        url: "https://www.youtube.com/watch?v=vLnPwxZdW4Y",
-        description: "Comprehensive C++ course from basic syntax to advanced features.",
-        viewCount: "5.2M views",
-        channelName: "freeCodeCamp.org",
-        subscribers: "7.5M subscribers",
-        subjects: ["programming", "computer science", "software development", "c++"],
-        topics: ["c++", "programming", "cpp", "object oriented", "data structures", "algorithms", "pointers", "memory management"]
-      },
-      {
-        title: "Java Programming Tutorial - Full Course for Beginners",
-        url: "https://www.youtube.com/watch?v=grEKMHGYyns",
-        description: "Complete Java tutorial covering core concepts and practical applications.",
-        viewCount: "7.4M views",
-        channelName: "freeCodeCamp.org",
-        subscribers: "7.5M subscribers",
-        subjects: ["programming", "computer science", "software development", "java"],
-        topics: ["java", "programming", "oop", "object oriented", "classes", "inheritance", "interfaces", "collections"]
-      },
-      // General learning videos
-      {
-        title: "How to Learn Anything... Fast - Josh Kaufman",
-        url: "https://www.youtube.com/watch?v=EtJy69cEOtQ",
-        description: "Learn the principles of rapid skill acquisition that can be applied to any subject.",
-        viewCount: "5.2M views",
-        channelName: "TEDx Talks",
-        subscribers: "36.8M subscribers",
-        subjects: ["learning", "study", "education", "productivity"],
-        topics: ["learning techniques", "skill acquisition", "study methods", "rapid learning", "habit formation", "deliberate practice"]
-      },
-      {
-        title: "The first 20 hours -- how to learn anything",
-        url: "https://www.youtube.com/watch?v=5MgBikgcWnY",
-        description: "Josh Kaufman explains his method for learning new skills quickly.",
-        viewCount: "31.7M views",
-        channelName: "TEDx Talks",
-        subscribers: "36.8M subscribers",
-        subjects: ["learning", "study", "education", "productivity"],
-        topics: ["learning techniques", "skill acquisition", "study methods", "practice", "learning strategy", "deliberate practice"]
+        title: `${top} - In-Depth Problem Solving & Examples`,
+        channelName: "Top Academic Channel",
+        description: `High-yield questions and step-by-step problem walkthroughs for ${top}.`,
+        url: `https://www.youtube.com/results?search_query=${encodeURIComponent(`${subj} ${top} examples tutorial`)}`,
+        isAiCurated: true
       }
     ];
-    
-    // Calculate relevance scores for each video
-    const scoredVideos = allVideos.map(video => {
-      let relevanceScore = 0;
-      
-      // Subject matching (weighted higher)
-      const subjectMatches = video.subjects.map(s => {
-        // Check for exact match first
-        if (s.toLowerCase() === searchSubject) {
-          return 100;
-        }
-        
-        // Then check for partial/fuzzy match
-        return stringSimilarity(s.toLowerCase(), searchSubject);
-      });
-      
-      const bestSubjectMatch = Math.max(...subjectMatches);
-      
-      // Topic matching
-      const topicMatches = video.topics.map(t => {
-        // Check for exact match first
-        if (t.toLowerCase() === searchTopic) {
-          return 100;
-        }
-        
-        // Then check for partial/fuzzy match
-        return stringSimilarity(t.toLowerCase(), searchTopic);
-      });
-      
-      const bestTopicMatch = Math.max(...topicMatches);
-      
-      // Keyword matching for more granular relevance
-      let keywordMatchScore = 0;
-      if (topicKeywords.length > 0) {
-        const keywordScores = topicKeywords.map(keyword => {
-          const topicScores = video.topics.map(t => {
-            if (t.toLowerCase().includes(keyword)) {
-              return 50; // Boost for containing keyword
-            }
-            return stringSimilarity(t.toLowerCase(), keyword) * 0.3; // Partial match with reduced weight
-          });
-          return Math.max(...topicScores);
-        });
-        
-        keywordMatchScore = keywordScores.reduce((sum, score) => sum + score, 0) / topicKeywords.length;
-      }
-      
-      // Calculate final score with weights: subject (40%), topic (40%), keywords (20%)
-      relevanceScore = (bestSubjectMatch * 0.4) + (bestTopicMatch * 0.4) + (keywordMatchScore * 0.2);
-      
-      return { ...video, relevanceScore };
-    });
-    
-    // Filter to reasonably relevant videos (>40% relevance)
-    const relevantVideos = scoredVideos
-      .filter(video => video.relevanceScore && video.relevanceScore > 40)
-      .sort((a, b) => (b.relevanceScore || 0) - (a.relevanceScore || 0));
-    
-    // Return the top 8 most relevant videos
-    const result = relevantVideos.slice(0, 8);
-    
-    // If we don't have enough relevant videos, add some general learning videos
-    if (result.length < 4) {
-      const generalLearningVideos = scoredVideos
-        .filter(video => video.subjects.includes('learning'))
-        .sort((a, b) => (b.relevanceScore || 0) - (a.relevanceScore || 0))
-        .slice(0, 4);
-      
-      return [...result, ...generalLearningVideos].slice(0, 8);
-    }
-    
-    return result;
   };
 
-  // Function to validate all video URLs
-  const validateVideoUrls = async (videos: VideoSuggestion[]) => {
-    setValidatingLinks(true);
-    const updatedVideos = [...videos];
-    
-    for (let i = 0; i < updatedVideos.length; i++) {
-      updatedVideos[i] = { ...updatedVideos[i], checkingStatus: true };
-      setSuggestions([...updatedVideos]);
-      
-      // Mark all predefined videos as valid (they are guaranteed to work)
-      updatedVideos[i] = { 
-        ...updatedVideos[i], 
-        isValid: true, 
-        checkingStatus: false 
-      };
-      
-      setSuggestions([...updatedVideos]);
-    }
-    
-    // All videos are valid
-    setFilteredSuggestions(updatedVideos);
-    setValidationComplete(true);
-    setValidatingLinks(false);
-  };
+  const findLectures = async (customSubject?: string, customTopic?: string) => {
+    const activeSubj = (customSubject !== undefined ? customSubject : subject).trim();
+    const activeTop = (customTopic !== undefined ? customTopic : topic).trim();
 
-  const findLectures = async () => {
-    if (!isFormValid) {
-      setError('Please enter both subject and topic');
+    if (!activeTop) {
+      setError('Please enter a topic to search (e.g., "limit continuity gate")');
       return;
     }
 
     setLoading(true);
     setError('');
-    setSuggestions([]);
-    setFilteredSuggestions([]);
-    setValidationComplete(false);
+    setLectures([]);
+
+    const fullQuery = `${activeSubj ? activeSubj + ' ' : ''}${activeTop} lecture`.trim();
 
     try {
-      // Get videos that match the subject and topic
-      const videos = getWorkingYouTubeVideos(subject, topic);
-      
-      if (videos.length === 0) {
-        setError(`No videos found for "${topic}" in "${subject}". Please try different search terms.`);
-        setLoading(false);
-        return;
+      let results: LectureVideo[] = [];
+
+      // 1. Try Backend YouTube Search
+      try {
+        results = await searchBackendApi(fullQuery, activeSubj, activeTop);
+      } catch (backendErr) {
+        console.warn("Backend YouTube search failed, trying client YouTube API...", backendErr);
       }
-      
-      setSuggestions(videos);
-      
-      // Simulate validation process
-      setTimeout(() => {
-        validateVideoUrls(videos);
-      }, 1500);
-      
-    } catch (err) {
-      setError('Failed to find lectures. Please try again.');
-      console.error(err);
+
+      // 2. If Backend search didn't yield results, try client-side YouTube Data API directly
+      if (results.length === 0) {
+        try {
+          results = await searchYouTubeApi(fullQuery);
+        } catch (clientErr) {
+          console.warn("Client YouTube API failed, falling back to AI curation...", clientErr);
+        }
+      }
+
+      // 3. If YouTube API quota reached or missing, fetch AI-curated lectures
+      if (results.length === 0) {
+        results = await getAiRecommendations(activeSubj, activeTop);
+      }
+
+      if (results.length === 0) {
+        setError(`No lectures found for "${activeTop}". Try adjusting your keywords.`);
+      } else {
+        setLectures(results);
+        if (!searchHistory.includes(activeTop)) {
+          setSearchHistory(prev => [activeTop, ...prev.slice(0, 4)]);
+        }
+      }
+    } catch (err: any) {
+      console.error('Find lectures error:', err);
+      setError('An error occurred while finding lectures. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
-  // Handle link click - prevent event bubbling
-  const handleLinkClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleSelectPreset = (preset: { subject: string; topic: string }) => {
+    setSubject(preset.subject);
+    setTopic(preset.topic);
+    findLectures(preset.subject, preset.topic);
   };
 
-  // Popular subject suggestions
-  const popularSubjects = ["Mathematics", "Physics", "Computer Science", "History", "Biology", "Chemistry", "Programming"];
-
-  // Reset the form
-  const resetForm = () => {
-    setSubject('');
-    setTopic('');
-    setSuggestions([]);
-    setFilteredSuggestions([]);
-    setError('');
-    setActiveTab(null);
-    setValidationComplete(false);
+  const handleGenerateNotes = (lecture: LectureVideo) => {
+    navigate('/notes', { state: { videoUrl: lecture.url, videoTitle: lecture.title } });
   };
 
-  // Determine which suggestions to display
-  const displaySuggestions = validationComplete ? filteredSuggestions : suggestions;
+  const handlePracticeQuiz = (lecture: LectureVideo) => {
+    navigate('/quiz', {
+      state: {
+        course: subject || 'General',
+        topic: topic || lecture.title,
+        fromLecture: true
+      }
+    });
+  };
 
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      className="max-w-4xl mx-auto px-4 py-8"
-    >
-      <motion.div 
-        initial={{ y: -20 }}
-        animate={{ y: 0 }}
-        transition={{ type: "spring", stiffness: 300, damping: 20 }}
-        className="bg-[#B3D8A8]/10 backdrop-blur-lg rounded-xl p-6 border border-[#B3D8A8]/30 mb-8 shadow-lg"
+    <div className="min-h-screen bg-black text-white px-4 py-8 max-w-6xl mx-auto">
+      {/* Header Banner */}
+      <motion.div
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="bg-[#B3D8A8]/10 backdrop-blur-lg rounded-2xl p-6 sm:p-8 border border-[#B3D8A8]/30 mb-8 shadow-xl shadow-[#B3D8A8]/5"
       >
-        <motion.div
-          initial={{ scale: 0.95 }}
-          animate={{ scale: 1 }}
-          transition={{ duration: 0.3 }}
-          className="flex items-center space-x-2 mb-6"
-        >
-          <BookOpen className="w-6 h-6 text-[#B3D8A8]" />
-          <h1 className="text-2xl font-bold text-[#B3D8A8]">Find Relevant Lectures</h1>
-        </motion.div>
-        
-        <div className="space-y-4">
-          {/* Subject selection */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <label className="block text-sm font-medium mb-1 text-[#B3D8A8]">Subject</label>
-            <div className="flex flex-wrap gap-2 mb-2">
-              {popularSubjects.map((subj, index) => (
-                <motion.button
-                  key={index}
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  onClick={() => setSubject(subj)}
-                  className={`px-3 py-1 text-sm rounded-full transition-colors ${
-                    subject === subj 
-                      ? 'bg-[#B3D8A8] text-black' 
-                      : 'bg-[#B3D8A8]/20 text-[#B3D8A8] hover:bg-[#B3D8A8]/30'
-                  }`}
-                >
-                  {subj}
-                </motion.button>
-              ))}
+            <div className="flex items-center space-x-3 mb-2">
+              <div className="p-2.5 bg-[#B3D8A8]/20 rounded-xl border border-[#B3D8A8]/40">
+                <Video className="w-6 h-6 text-[#B3D8A8]" />
+              </div>
+              <h1 className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-white via-gray-100 to-[#B3D8A8] bg-clip-text text-transparent">
+                Find Relevant YouTube Lectures
+              </h1>
             </div>
-            <input
-              type="text"
-              placeholder="Enter subject (e.g., Physics, Programming, Literature)"
-              value={subject}
-              onChange={(e) => setSubject(e.target.value)}
-              className="w-full px-4 py-2 rounded-lg bg-[#B3D8A8]/5 border border-[#B3D8A8]/30 focus:border-[#82A878] focus:outline-none transition-all focus:ring-2 focus:ring-[#B3D8A8]/20"
-            />
+            <p className="text-gray-400 text-sm sm:text-base max-w-2xl">
+              Search any academic subject and topic to get live, relevant YouTube lectures. Watch directly or instantly generate structured AI study notes with a single click.
+            </p>
           </div>
-          {/* Topic input */}
-          <div>
-            <label className="block text-sm font-medium mb-1 text-[#B3D8A8]">Topic</label>
-            <input
-              type="text"
-              placeholder="Enter specific topic (e.g., Quantum Mechanics, React Hooks)"
-              value={topic}
-              onChange={(e) => setTopic(e.target.value)}
-              className="w-full px-4 py-2 rounded-lg bg-[#B3D8A8]/5 border border-[#B3D8A8]/30 focus:border-[#82A878] focus:outline-none transition-all focus:ring-2 focus:ring-[#B3D8A8]/20"
-            />
-          </div>
-          
-          {/* Action buttons */}
-          <div className="flex flex-col sm:flex-row gap-3 pt-2">
-            <motion.button
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              onClick={findLectures}
-              disabled={loading || !isFormValid || validatingLinks}
-              className={`flex-1 px-6 py-3 rounded-lg font-medium flex items-center justify-center space-x-2 transition-all ${
-                isFormValid && !loading && !validatingLinks
-                  ? 'bg-gradient-to-r from-[#B3D8A8] to-[#82A878] text-black hover:opacity-90'
-                  : 'bg-gray-300 text-gray-600 cursor-not-allowed'
-              }`}
-            >
-              {loading || validatingLinks ? (
-                <>
-                  <Loader className="w-5 h-5 animate-spin" />
-                  <span>{loading ? 'Searching...' : 'Validating links...'}</span>
-                </>
-              ) : (
-                <>
-                  <Search className="w-5 h-5" />
-                  <span>Find Lectures</span>
-                </>
-              )}
-            </motion.button>
-            
-            <motion.button
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              onClick={resetForm}
-              className="px-6 py-3 rounded-lg bg-[#B3D8A8]/10 text-[#B3D8A8] hover:bg-[#B3D8A8]/20 transition-colors flex items-center justify-center space-x-2"
-            >
-              <span>Reset</span>
-            </motion.button>
-          </div>
-          
-          {/* Error message */}
-          <AnimatePresence>
-            {error && (
-              <motion.div 
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                className="p-3 rounded bg-red-500/10 border border-red-500 text-red-500"
+        </div>
+
+        {/* Search Inputs */}
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            findLectures();
+          }}
+          className="mt-6 space-y-4"
+        >
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-3 sm:gap-4">
+            <div className="md:col-span-4">
+              <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1.5">
+                Subject / Exam (Optional)
+              </label>
+              <input
+                type="text"
+                placeholder="e.g., GATE CSE, Mathematics, Physics"
+                value={subject}
+                onChange={(e) => setSubject(e.target.value)}
+                className="w-full px-4 py-3 bg-black/60 border border-[#B3D8A8]/30 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-[#B3D8A8] focus:ring-1 focus:ring-[#B3D8A8] transition-all text-sm"
+              />
+            </div>
+
+            <div className="md:col-span-6">
+              <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1.5">
+                Topic or Keywords <span className="text-[#B3D8A8]">*</span>
+              </label>
+              <div className="relative">
+                <input
+                  type="text"
+                  placeholder='e.g., "limit continuity gate", "operating systems deadlock"'
+                  value={topic}
+                  onChange={(e) => setTopic(e.target.value)}
+                  className="w-full px-4 py-3 pl-10 bg-black/60 border border-[#B3D8A8]/30 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-[#B3D8A8] focus:ring-1 focus:ring-[#B3D8A8] transition-all text-sm"
+                  required
+                />
+                <Search className="w-4 h-4 text-gray-400 absolute left-3.5 top-3.5" />
+              </div>
+            </div>
+
+            <div className="md:col-span-2 flex items-end">
+              <button
+                type="submit"
+                disabled={loading || !topic.trim()}
+                className="w-full py-3 px-4 bg-gradient-to-r from-[#B3D8A8] to-[#82A878] hover:from-[#9bc790] hover:to-[#719667] text-black font-semibold rounded-xl flex items-center justify-center space-x-2 transition-all shadow-md shadow-[#B3D8A8]/20 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {error}
-              </motion.div>
-            )}
-          </AnimatePresence>
+                {loading ? (
+                  <>
+                    <Loader className="w-4 h-4 animate-spin text-black" />
+                    <span>Searching...</span>
+                  </>
+                ) : (
+                  <>
+                    <Search className="w-4 h-4 text-black" />
+                    <span>Search</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </form>
+
+        {/* Quick Suggestion Chips */}
+        <div className="mt-5 pt-4 border-t border-[#B3D8A8]/20">
+          <div className="flex items-center space-x-2 text-xs text-gray-400 mb-2 font-medium">
+            <Sparkles className="w-3.5 h-3.5 text-[#B3D8A8]" />
+            <span>Popular Topics:</span>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {popularPresets.map((preset, idx) => (
+              <button
+                key={idx}
+                type="button"
+                onClick={() => handleSelectPreset(preset)}
+                className="text-xs px-3 py-1.5 rounded-lg bg-white/5 hover:bg-[#B3D8A8]/20 border border-white/10 hover:border-[#B3D8A8]/40 text-gray-300 hover:text-white transition-all text-left"
+              >
+                <span className="text-[#B3D8A8] font-semibold">{preset.subject}:</span> {preset.topic}
+              </button>
+            ))}
+          </div>
         </div>
       </motion.div>
 
-      {/* Results section */}
-      <AnimatePresence>
-        {displaySuggestions.length > 0 && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
-            className="space-y-6"
-          >
-            <div className="flex items-center space-x-2 mb-4">
-              <Sparkles className="w-5 h-5 text-[#B3D8A8]" />
-              <h2 className="text-xl font-semibold text-[#B3D8A8]">
-                Recommended Videos for <span className="opacity-80">{topic}</span> in <span className="opacity-80">{subject}</span>
-              </h2>
-            </div>
+      {/* Error Message */}
+      {error && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="p-4 mb-6 bg-red-900/30 border border-red-500/50 rounded-xl text-red-200 text-sm flex items-center justify-between"
+        >
+          <span>{error}</span>
+          <button onClick={() => setError('')} className="text-red-300 hover:text-white">
+            <X className="w-4 h-4" />
+          </button>
+        </motion.div>
+      )}
 
-            {validationComplete && filteredSuggestions.length === 0 && (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                className="p-4 bg-[#B3D8A8]/10 rounded-lg border border-[#B3D8A8]/30 text-center"
-              >
-                <p className="text-[#B3D8A8]">No available videos found. Please try a different search.</p>
-              </motion.div>
-            )}
-            
-            <div className="grid grid-cols-1 gap-4">
-              {displaySuggestions.map((video, index) => (
-                <motion.div 
-                  key={index}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ 
-                    opacity: 1, 
-                    y: 0,
-                    transition: { delay: index * 0.1 }
-                  }}
-                  whileHover={{ y: -3, transition: { duration: 0.2 } }}
-                  className={`bg-[#B3D8A8]/10 backdrop-blur-lg rounded-xl border border-[#B3D8A8]/30 overflow-hidden shadow-md ${
-                    activeTab === index ? 'ring-2 ring-[#B3D8A8]' : ''
-                  }`}
-                >
-                  <div 
-                    onClick={() => setActiveTab(activeTab === index ? null : index)}
-                    className="p-4 cursor-pointer"
-                  >
-                    <div className="flex items-start space-x-4">
-                      <div className="bg-[#B3D8A8]/20 p-2 rounded-lg">
-                        {video.checkingStatus ? (
-                          <Loader className="w-6 h-6 text-[#B3D8A8] animate-spin" />
-                        ) : (
-                          <Video className="w-6 h-6 text-[#B3D8A8]" />
-                        )}
-                      </div>
-                      <div className="flex-1">
-                        <h3 className="font-semibold text-[#B3D8A8]">{video.title}</h3>
-                        
-                        {/* Channel info and view count - visible in collapsed state */}
-                        {(video.channelName || video.viewCount) && (
-                          <div className="flex items-center text-xs text-gray-400 mt-1 space-x-2">
-                            {video.channelName && (
-                              <span>{video.channelName}</span>
-                            )}
-                            {video.channelName && video.viewCount && (
-                              <span>•</span>
-                            )}
-                            {video.viewCount && (
-                              <span>{video.viewCount}</span>
-                            )}
-                          </div>
-                        )}
-                        
-                        {/* Relevance score indicator - new feature */}
-                        {video.relevanceScore && (
-                          <div className="mt-2 flex items-center">
-                            <div className="h-1.5 bg-gray-200 rounded-full w-full overflow-hidden">
-                              <div 
-                                className="h-full bg-gradient-to-r from-[#82A878] to-[#B3D8A8]" 
-                                style={{ width: `${Math.min(100, Math.max(40, video.relevanceScore))}%` }}
-                              ></div>
-                            </div>
-                            <span className="text-xs text-gray-400 ml-2">{Math.round(video.relevanceScore)}% match</span>
-                          </div>
-                        )}
-                        
-                        <AnimatePresence>
-                          {activeTab === index && (
-                            <motion.div
-                              initial={{ height: 0, opacity: 0 }}
-                              animate={{ height: "auto", opacity: 1 }}
-                              exit={{ height: 0, opacity: 0 }}
-                              transition={{ duration: 0.3 }}
-                              className="overflow-hidden"
-                            >
-                              <p className="text-gray-400 text-sm my-3">{video.description}</p>
-                              
-                              {video.subscribers && (
-                                <div className="mb-3 text-xs text-gray-400">
-                                  <span>{video.subscribers}</span>
-                                </div>
-                              )}
-                              
-                              {/* Tags display - new feature */}
-                              <div className="flex flex-wrap gap-2 mb-3">
-                                {video.topics.slice(0, 3).map((tag, idx) => (
-                                  <span 
-                                    key={idx} 
-                                    className="text-xs px-2 py-1 bg-[#B3D8A8]/10 text-[#B3D8A8] rounded-full"
-                                  >
-                                    {tag}
-                                  </span>
-                                ))}
-                              </div>
-                              
-                              {video.checkingStatus ? (
-                                <p className="text-sm text-[#B3D8A8]">Checking if this video is available...</p>
-                              ) : (
-                                <a
-                                  href={video.url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="inline-flex items-center space-x-2 text-[#B3D8A8] hover:text-[#82A878] text-sm group px-3 py-1.5 bg-[#B3D8A8]/10 rounded-lg hover:bg-[#B3D8A8]/20 transition-colors"
-                                  onClick={handleLinkClick}
-                                >
-                                  <span>Watch Video</span>
-                                  <ExternalLink className="w-4 h-4 transition-transform group-hover:translate-x-0.5" />
-                                </a>
-                              )}
-                            </motion.div>
-                          )}
-                        </AnimatePresence>
-                      </div>
-                    </div>
-                  </div>
-                </motion.div>
-              ))}
+      {/* Results Header */}
+      {lectures.length > 0 && (
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-xl font-bold text-[#B3D8A8] flex items-center space-x-2">
+            <span>Lectures for "{topic}"</span>
+            <span className="text-xs px-2.5 py-0.5 rounded-full bg-[#B3D8A8]/20 text-[#B3D8A8] border border-[#B3D8A8]/30">
+              {lectures.length} results
+            </span>
+          </h2>
+
+          <a
+            href={`https://www.youtube.com/results?search_query=${encodeURIComponent(`${subject} ${topic} lecture`)}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs text-gray-400 hover:text-[#B3D8A8] flex items-center space-x-1 transition-colors"
+          >
+            <span>More on YouTube</span>
+            <ExternalLink className="w-3.5 h-3.5" />
+          </a>
+        </div>
+      )}
+
+      {/* Loading Skeleton */}
+      {loading && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {[1, 2, 3, 4].map((i) => (
+            <div
+              key={i}
+              className="bg-[#B3D8A8]/5 border border-[#B3D8A8]/20 rounded-2xl p-5 animate-pulse space-y-4"
+            >
+              <div className="h-44 bg-white/5 rounded-xl" />
+              <div className="h-5 bg-white/10 rounded w-3/4" />
+              <div className="h-4 bg-white/5 rounded w-1/2" />
+              <div className="h-10 bg-white/5 rounded-xl" />
             </div>
-            
-            {/* No results after search suggestion */}
-            {validationComplete && filteredSuggestions.length === 0 && (
+          ))}
+        </div>
+      )}
+
+      {/* Lecture Cards Grid */}
+      {!loading && lectures.length > 0 && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="grid grid-cols-1 md:grid-cols-2 gap-6"
+        >
+          {lectures.map((lecture, index) => {
+            const hasVideoId = !!lecture.id || !!lecture.url.match(/v=([a-zA-Z0-9_-]{11})/);
+            const videoId = lecture.id || (lecture.url.match(/v=([a-zA-Z0-9_-]{11})/) ? lecture.url.match(/v=([a-zA-Z0-9_-]{11})/)![1] : null);
+
+            return (
               <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                className="p-4 bg-[#B3D8A8]/10 rounded-lg border border-[#B3D8A8]/30 text-center mt-6"
+                key={index}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: index * 0.08 }}
+                className="bg-[#B3D8A8]/5 hover:bg-[#B3D8A8]/10 border border-[#B3D8A8]/20 hover:border-[#B3D8A8]/50 rounded-2xl p-5 transition-all flex flex-col justify-between group shadow-lg"
               >
-                <p className="text-[#B3D8A8] mb-2">Try these popular searches:</p>
-                <div className="flex flex-wrap justify-center gap-2">
-                  <button 
-                    onClick={() => {
-                      setSubject("Mathematics");
-                      setTopic("Calculus");
-                      setTimeout(() => findLectures(), 100);
-                    }}
-                    className="px-3 py-1 text-sm rounded-full bg-[#B3D8A8]/20 text-[#B3D8A8] hover:bg-[#B3D8A8]/30"
+                <div>
+                  {/* Thumbnail / Header */}
+                  <div className="relative rounded-xl overflow-hidden mb-4 bg-black/80 aspect-video flex items-center justify-center border border-white/10">
+                    {lecture.thumbnail ? (
+                      <img
+                        src={lecture.thumbnail}
+                        alt={lecture.title}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                        onError={(e) => {
+                          // Fallback if image fails to load
+                          if (videoId) {
+                            (e.target as HTMLImageElement).src = `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
+                          }
+                        }}
+                      />
+                    ) : (
+                      <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-gray-900 to-black p-4 text-center">
+                        <Video className="w-10 h-10 text-[#B3D8A8] mb-2 opacity-80" />
+                        <span className="text-xs text-gray-400">{lecture.channelName || 'YouTube Lecture'}</span>
+                      </div>
+                    )}
+
+                    {/* Play Overlay Button */}
+                    {hasVideoId && (
+                      <button
+                        onClick={() => setActiveModalVideo(lecture)}
+                        className="absolute inset-0 bg-black/40 hover:bg-black/20 flex items-center justify-center transition-all group/btn"
+                        title="Watch Preview"
+                      >
+                        <div className="w-12 h-12 rounded-full bg-[#B3D8A8] text-black flex items-center justify-center shadow-lg group-hover/btn:scale-110 transition-transform">
+                          <Play className="w-5 h-5 ml-0.5 fill-black" />
+                        </div>
+                      </button>
+                    )}
+
+                    {lecture.isAiCurated && (
+                      <div className="absolute top-2 right-2 bg-purple-600/90 text-white text-[10px] font-semibold px-2 py-0.5 rounded-full backdrop-blur-sm border border-purple-400/40">
+                        AI Recommended
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Channel & Metadata */}
+                  <div className="flex items-center justify-between text-xs text-gray-400 mb-2">
+                    <span className="font-medium text-[#B3D8A8] truncate max-w-[200px]">
+                      {lecture.channelName || 'Academic Lecture'}
+                    </span>
+                    {lecture.publishedAt && <span>{lecture.publishedAt}</span>}
+                  </div>
+
+                  {/* Title */}
+                  <h3 className="font-semibold text-base sm:text-lg text-white group-hover:text-[#B3D8A8] transition-colors line-clamp-2 mb-2">
+                    {lecture.title}
+                  </h3>
+
+                  {/* Description */}
+                  <p className="text-xs sm:text-sm text-gray-400 line-clamp-2 leading-relaxed mb-4">
+                    {lecture.description || 'Comprehensive lecture and walkthrough covering essential concepts.'}
+                  </p>
+                </div>
+
+                {/* Actions */}
+                <div className="pt-3 border-t border-white/10 space-y-2">
+                  <div className="grid grid-cols-2 gap-2">
+                    {/* Generate Smart Notes CTA */}
+                    <button
+                      onClick={() => handleGenerateNotes(lecture)}
+                      className="py-2.5 px-3 bg-gradient-to-r from-[#B3D8A8] to-[#82A878] hover:from-[#9bc790] hover:to-[#719667] text-black font-semibold rounded-xl text-xs sm:text-sm flex items-center justify-center space-x-1.5 transition-all shadow-sm"
+                      title="Generate Notes with AI from this lecture"
+                    >
+                      <BookOpen className="w-4 h-4" />
+                      <span>Generate Notes</span>
+                    </button>
+
+                    {/* Quiz CTA */}
+                    <button
+                      onClick={() => handlePracticeQuiz(lecture)}
+                      className="py-2.5 px-3 bg-white/10 hover:bg-white/20 text-white font-medium rounded-xl text-xs sm:text-sm flex items-center justify-center space-x-1.5 border border-white/15 transition-all"
+                      title="Practice Quiz on this topic"
+                    >
+                      <HelpCircle className="w-4 h-4 text-[#B3D8A8]" />
+                      <span>Take Quiz</span>
+                    </button>
+                  </div>
+
+                  {/* Watch on YouTube Link */}
+                  <a
+                    href={lecture.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="w-full py-2 px-3 text-xs text-center text-gray-400 hover:text-white hover:bg-white/5 rounded-lg flex items-center justify-center space-x-1 transition-all"
                   >
-                    Mathematics: Calculus
-                  </button>
-                  <button 
-                    onClick={() => {
-                      setSubject("Programming");
-                      setTopic("Python");
-                      setTimeout(() => findLectures(), 100);
-                    }}
-                    className="px-3 py-1 text-sm rounded-full bg-[#B3D8A8]/20 text-[#B3D8A8] hover:bg-[#B3D8A8]/30"
-                  >
-                    Programming: Python
-                  </button>
-                  <button 
-                    onClick={() => {
-                      setSubject("Physics");
-                      setTopic("Quantum Mechanics");
-                      setTimeout(() => findLectures(), 100);
-                    }}
-                    className="px-3 py-1 text-sm rounded-full bg-[#B3D8A8]/20 text-[#B3D8A8] hover:bg-[#B3D8A8]/30"
-                  >
-                    Physics: Quantum Mechanics
-                  </button>
+                    <span>Open on YouTube</span>
+                    <ExternalLink className="w-3 h-3 ml-1" />
+                  </a>
                 </div>
               </motion.div>
-            )}
+            );
+          })}
+        </motion.div>
+      )}
+
+      {/* Empty State / Initial Prompt */}
+      {!loading && lectures.length === 0 && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="text-center py-16 px-4 bg-[#B3D8A8]/5 rounded-2xl border border-[#B3D8A8]/10"
+        >
+          <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-[#B3D8A8]/10 flex items-center justify-center border border-[#B3D8A8]/20">
+            <Search className="w-8 h-8 text-[#B3D8A8]" />
+          </div>
+          <h3 className="text-lg font-bold text-white mb-2">Search Any Topic or Syllabus</h3>
+          <p className="text-gray-400 text-sm max-w-md mx-auto mb-6">
+            Enter a topic like <span className="text-[#B3D8A8]">"limit continuity gate"</span>, <span className="text-[#B3D8A8]">"binary trees"</span>, or click any topic above to explore real lectures.
+          </p>
+        </motion.div>
+      )}
+
+      {/* Video Player Modal */}
+      <AnimatePresence>
+        {activeModalVideo && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md"
+            onClick={() => setActiveModalVideo(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-gray-900 border border-[#B3D8A8]/30 rounded-2xl overflow-hidden max-w-3xl w-full shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="p-4 flex items-center justify-between border-b border-white/10 bg-black/40">
+                <h3 className="font-semibold text-white truncate max-w-[80%]">
+                  {activeModalVideo.title}
+                </h3>
+                <button
+                  onClick={() => setActiveModalVideo(null)}
+                  className="p-1 rounded-lg text-gray-400 hover:text-white hover:bg-white/10"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="aspect-video w-full bg-black">
+                {activeModalVideo.id || activeModalVideo.url.match(/v=([a-zA-Z0-9_-]{11})/) ? (
+                  <iframe
+                    src={`https://www.youtube.com/embed/${
+                      activeModalVideo.id || activeModalVideo.url.match(/v=([a-zA-Z0-9_-]{11})/)![1]
+                    }?autoplay=1`}
+                    title={activeModalVideo.title}
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    allowFullScreen
+                    className="w-full h-full"
+                  />
+                ) : (
+                  <div className="flex flex-col items-center justify-center h-full text-center p-6">
+                    <p className="text-gray-300 mb-4">Video preview unavailable in modal.</p>
+                    <a
+                      href={activeModalVideo.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="py-2.5 px-4 bg-[#B3D8A8] text-black font-semibold rounded-xl text-sm"
+                    >
+                      Watch on YouTube
+                    </a>
+                  </div>
+                )}
+              </div>
+
+              <div className="p-4 bg-black/40 flex items-center justify-between">
+                <span className="text-xs text-gray-400">{activeModalVideo.channelName}</span>
+                <button
+                  onClick={() => {
+                    const vid = activeModalVideo;
+                    setActiveModalVideo(null);
+                    handleGenerateNotes(vid);
+                  }}
+                  className="py-2 px-4 bg-[#B3D8A8] hover:bg-[#9bc790] text-black font-semibold rounded-xl text-xs flex items-center space-x-1.5 transition-all"
+                >
+                  <BookOpen className="w-3.5 h-3.5" />
+                  <span>Generate Notes from this Lecture</span>
+                </button>
+              </div>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
-    </motion.div>
+    </div>
   );
 }

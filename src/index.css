@@ -176,3 +176,24 @@
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
   background: rgba(179, 216, 168, 0.7); /* Chrome, Safari, Edge */
 }
+
+/* KaTeX Math Styling */
+.katex-display {
+  margin: 1.25em 0 !important;
+  padding: 0.85em 1.25em !important;
+  background: rgba(179, 216, 168, 0.08);
+  border: 1px solid rgba(179, 216, 168, 0.25);
+  border-radius: 0.85rem;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.katex {
+  font-size: 1.1em !important;
+  color: #B3D8A8 !important;
+}
+
+.katex-display .katex {
+  font-size: 1.22em !important;
+  color: #f1f5f9 !important;
+}

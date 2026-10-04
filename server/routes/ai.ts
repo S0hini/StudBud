@@ -26,14 +26,54 @@ const getEnvKeys = (req: Request) => {
   return { geminiKey, groqKey };
 };
 
+const GROQ_CANDIDATE_MODELS = [
+  "llama-3.3-70b-versatile",
+  "llama-3.1-8b-instant",
+  "mixtral-8x7b-32768",
+  "gemma2-9b-it"
+];
+
 const GEMINI_CANDIDATE_MODELS = [
   "gemini-1.5-flash",
   "gemini-2.0-flash",
   "gemini-2.5-flash",
-  "gemini-1.5-pro-latest",
+  "gemini-1.5-pro",
   "gemini-1.5-flash-8b",
   "gemini-pro"
 ];
+
+// Helper to query Groq
+async function queryGroq(apiKey: string, messages: any[], maxTokens = 2048): Promise<string | null> {
+  for (const model of GROQ_CANDIDATE_MODELS) {
+    try {
+      const groqResponse = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${apiKey}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          model,
+          messages,
+          max_tokens: maxTokens,
+          temperature: 0.7
+        })
+      });
+
+      if (groqResponse.ok) {
+        const data = await groqResponse.json();
+        const content = data.choices?.[0]?.message?.content;
+        if (content) return content;
+      } else {
+        const errText = await groqResponse.text();
+        console.warn(`[AI Groq] Model ${model} returned ${groqResponse.status}:`, errText);
+      }
+    } catch (err) {
+      console.warn(`[AI Groq] Model ${model} network error:`, err);
+    }
+  }
+  return null;
+}
 
 // POST /api/ai/tutor
 aiRouter.post('/tutor', async (req: Request, res: Response) => {
@@ -48,6 +88,10 @@ aiRouter.post('/tutor', async (req: Request, res: Response) => {
 
     const formattedPrompt = `Please explain the topic: "${message}" in ENGLISH.
 Use bold text with markdown formatting (e.g., **word**) for important terms.
+For any mathematical formulas, equations, or limits, always format with LaTeX delimiters:
+- Inline math: $a^{\\infty}$, $\\lim_{x \\to a} f(x)$, $0^0$, $\\infty^0$
+- Display math: $$ \\lim_{x\\to a} f(x)^{g(x)} = \\exp\\left( \\lim_{x\\to a} g(x) \\ln f(x) \\right) $$
+
 Provide a comprehensive explanation in the following format:
 📌 **BRIEF OVERVIEW:**
 [Provide a 2-3 sentence introduction in English, using **bold** for key terms]
@@ -57,13 +101,13 @@ Provide a comprehensive explanation in the following format:
 • **[Key term 3]**: [Definition]
 📝 **DETAILED EXPLANATION:**
 • **[Main concept 1]**
-  - [Detailed explanation with **bold** key terms]
+  - [Detailed explanation with **bold** key terms and clear LaTeX math if applicable]
   - [Supporting details]
 • **[Main concept 2]**
   - [Detailed explanation with **bold** key terms]
   - [Supporting details]
 💡 **EXAMPLES:**
-• **Example 1**: [Practical application]
+• **Example 1**: [Practical application or worked equation]
 • **Example 2**: [Practical application]
 ✨ **SUMMARY:**
 [Brief summary highlighting **key terms** and main points]
@@ -71,34 +115,13 @@ Remember to respond in clear ENGLISH and use **bold** formatting (with double as
 
     // Try Groq API first if key exists
     if (groqKey) {
-      try {
-        const groqMessages = [
-          ...history.map((h: any) => ({ role: h.role === 'assistant' ? 'assistant' : 'user', content: h.content })),
-          { role: 'user', content: formattedPrompt }
-        ];
-
-        const groqResponse = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${groqKey}`,
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            model: "openai/gpt-oss-120b",
-            messages: groqMessages,
-            max_tokens: 2048
-          })
-        });
-
-        if (groqResponse.ok) {
-          const data = await groqResponse.json();
-          const content = data.choices?.[0]?.message?.content || "";
-          if (content) {
-            return res.json({ success: true, content, provider: 'groq' });
-          }
-        }
-      } catch (groqErr) {
-        console.warn("[AI Tutor] Groq failed, checking Gemini...", groqErr);
+      const groqMessages = [
+        ...history.map((h: any) => ({ role: h.role === 'assistant' ? 'assistant' : 'user', content: h.content })),
+        { role: 'user', content: formattedPrompt }
+      ];
+      const groqResult = await queryGroq(groqKey, groqMessages, 2048);
+      if (groqResult) {
+        return res.json({ success: true, content: groqResult, provider: 'groq' });
       }
     }
 
@@ -111,7 +134,7 @@ Remember to respond in clear ENGLISH and use **bold** formatting (with double as
           const result = await model.generateContent(formattedPrompt);
           const response = await result.response;
           const text = response.text();
-          if (text) return res.json({ success: true, content: text, provider: 'gemini' });
+          if (text) return res.json({ success: true, content: text, provider: 'gemini', model: modelName });
         } catch (geminiErr: any) {
           console.warn(`[AI Tutor] Gemini ${modelName} failed:`, geminiErr?.message);
         }
@@ -183,29 +206,9 @@ Ensure the Markdown is rich, clean, formatted with proper headings (#, ##, ###),
 
     // 1. Try Groq first for fast and reliable response
     if (groqKey) {
-      try {
-        const groqResponse = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${groqKey}`,
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            model: "openai/gpt-oss-120b",
-            messages: [{ role: 'user', content: prompt }],
-            max_tokens: 3000
-          })
-        });
-
-        if (groqResponse.ok) {
-          const data = await groqResponse.json();
-          const content = data.choices?.[0]?.message?.content;
-          if (content) {
-            return res.json({ success: true, notes: content, provider: 'groq' });
-          }
-        }
-      } catch (groqErr) {
-        console.warn("[AI Notes] Groq failed, trying Gemini...", groqErr);
+      const groqResult = await queryGroq(groqKey, [{ role: 'user', content: prompt }], 3000);
+      if (groqResult) {
+        return res.json({ success: true, notes: groqResult, provider: 'groq' });
       }
     }
 
@@ -231,5 +234,77 @@ Ensure the Markdown is rich, clean, formatted with proper headings (#, ##, ###),
   } catch (err: any) {
     console.error('[AI] Generate notes error:', err);
     return res.status(500).json({ error: err?.message || 'Failed to generate notes' });
+  }
+});
+
+// POST /api/ai/recommend-lectures
+aiRouter.post('/recommend-lectures', async (req: Request, res: Response) => {
+  try {
+    const { subject, topic } = req.body;
+    if (!subject && !topic) {
+      return res.status(400).json({ error: 'Subject or topic is required' });
+    }
+
+    const { geminiKey, groqKey } = getEnvKeys(req);
+    const prompt = `Recommend 6 top educational YouTube lectures or channels for studying the subject "${subject || 'General'}" on topic "${topic}".
+Respond ONLY with a valid JSON array of objects with fields:
+- title: string (descriptive lecture title)
+- channelName: string (top YouTube educator/channel e.g. Gate Smashers, NPTEL, 3Blue1Brown, Khan Academy, freeCodeCamp, MIT OpenCourseWare, etc.)
+- description: string (2 sentence overview of what this covers)
+- searchQuery: string (exact search term to find it on YouTube)
+
+JSON format only, no markdown or text:
+[
+  {
+    "title": "...",
+    "channelName": "...",
+    "description": "...",
+    "searchQuery": "..."
+  }
+]`;
+
+    let content: string | null = null;
+    if (groqKey) {
+      content = await queryGroq(groqKey, [{ role: 'user', content: prompt }], 1500);
+    }
+
+    if (!content && geminiKey) {
+      const genAI = new GoogleGenerativeAI(geminiKey);
+      for (const modelName of GEMINI_CANDIDATE_MODELS) {
+        try {
+          const model = genAI.getGenerativeModel({ model: modelName });
+          const result = await model.generateContent(prompt);
+          const response = await result.response;
+          content = response.text();
+          if (content) break;
+        } catch {}
+      }
+    }
+
+    if (content) {
+      try {
+        const cleaned = content.replace(/```json/g, '').replace(/```/g, '').trim();
+        const jsonMatch = cleaned.match(/\[\s*\{[\s\S]*\}\s*\]/);
+        const parsed = JSON.parse(jsonMatch ? jsonMatch[0] : cleaned);
+        return res.json({ success: true, recommendations: parsed });
+      } catch (parseErr) {
+        console.warn('Failed to parse lecture recommendation JSON:', parseErr);
+      }
+    }
+
+    return res.json({
+      success: true,
+      recommendations: [
+        {
+          title: `${topic} Complete Lecture & Concept Breakdown`,
+          channelName: `${subject || 'Academic'} Mastery`,
+          description: `Comprehensive video lecture covering fundamental concepts, problem solving, and theory for ${topic}.`,
+          searchQuery: `${subject || ''} ${topic} lecture`
+        }
+      ]
+    });
+  } catch (err: any) {
+    console.error('[AI Recommend Lectures] Error:', err);
+    return res.status(500).json({ error: 'Failed to recommend lectures' });
   }
 });

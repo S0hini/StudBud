@@ -37,22 +37,30 @@ Example structure:
     let rawText = '';
 
     if (groqKey) {
-      const groqResponse = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${groqKey}`,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          model: "openai/gpt-oss-120b",
-          messages: [{ role: 'user', content: prompt }],
-          max_tokens: 3000
-        })
-      });
+      const groqModels = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "mixtral-8x7b-32768", "gemma2-9b-it"];
+      for (const groqModel of groqModels) {
+        try {
+          const groqResponse = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${groqKey}`,
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+              model: groqModel,
+              messages: [{ role: 'user', content: prompt }],
+              max_tokens: 3000
+            })
+          });
 
-      if (groqResponse.ok) {
-        const data = await groqResponse.json();
-        rawText = data.choices?.[0]?.message?.content || "";
+          if (groqResponse.ok) {
+            const data = await groqResponse.json();
+            rawText = data.choices?.[0]?.message?.content || "";
+            if (rawText) break;
+          }
+        } catch (err) {
+          console.warn(`[Quiz Groq] Model ${groqModel} failed:`, err);
+        }
       }
     }
 

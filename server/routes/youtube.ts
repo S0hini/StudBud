@@ -1,17 +1,19 @@
 import { Router, Request, Response } from 'express';
 import { YoutubeTranscript } from 'youtube-transcript';
+import dotenv from 'dotenv';
 
 export const youtubeRouter = Router();
 
 // Helper to extract YouTube video ID
 function extractVideoId(urlOrId: string): string | null {
   if (!urlOrId) return null;
-  if (/^[a-zA-Z0-9_-]{11}$/.test(urlOrId)) {
-    return urlOrId;
+  const trimmed = urlOrId.trim();
+  if (/^[a-zA-Z0-9_-]{11}$/.test(trimmed)) {
+    return trimmed;
   }
-  const regExp = /^.*((youtu.be\/)|(v\/)|(\/u\/\w\/)|(embed\/)|(watch\?))\??v?=?([^#&?]*).*/;
-  const match = urlOrId.match(regExp);
-  return (match && match[7]?.length === 11) ? match[7] : null;
+  const regExp = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:watch\?.*v=|embed\/|v\/|shorts\/|live\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
+  const match = trimmed.match(regExp);
+  return match ? match[1] : null;
 }
 
 // POST /api/youtube/transcript
@@ -71,5 +73,64 @@ youtubeRouter.post('/transcript', async (req: Request, res: Response) => {
   } catch (err: any) {
     console.error('[YouTube] Server error in transcript route:', err);
     return res.status(500).json({ error: 'Failed to process YouTube transcript request' });
+  }
+});
+
+// POST /api/youtube/search
+youtubeRouter.post('/search', async (req: Request, res: Response) => {
+  try {
+    dotenv.config();
+    const { query, subject, topic } = req.body;
+    const searchQuery = (query || `${subject || ''} ${topic || ''} lecture`).trim();
+
+    if (!searchQuery) {
+      return res.status(400).json({ error: 'Search query is required' });
+    }
+
+    const apiKey = (
+      (req.headers['x-youtube-key'] as string) ||
+      process.env.VITE_YOUTUBE_API_KEY ||
+      process.env.YOUTUBE_API_KEY ||
+      ''
+    ).trim();
+
+    if (apiKey) {
+      try {
+        const ytRes = await fetch(
+          `https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=8&q=${encodeURIComponent(searchQuery)}&type=video&key=${apiKey}`
+        );
+
+        if (ytRes.ok) {
+          const data = await ytRes.json();
+          if (data.items && data.items.length > 0) {
+            const results = data.items.map((item: any) => ({
+              id: item.id?.videoId,
+              title: item.snippet.title,
+              description: item.snippet.description,
+              thumbnail: item.snippet.thumbnails?.high?.url || item.snippet.thumbnails?.medium?.url,
+              channelName: item.snippet.channelTitle,
+              url: `https://www.youtube.com/watch?v=${item.id?.videoId}`,
+              publishedAt: item.snippet.publishedAt
+            }));
+
+            return res.json({
+              success: true,
+              query: searchQuery,
+              results
+            });
+          }
+        }
+      } catch (ytErr) {
+        console.warn('[YouTube Search] YouTube API call failed:', ytErr);
+      }
+    }
+
+    return res.status(404).json({
+      success: false,
+      message: 'YouTube API key not configured or no results returned'
+    });
+  } catch (err: any) {
+    console.error('[YouTube Search] Error:', err);
+    return res.status(500).json({ error: 'Failed to search YouTube' });
   }
 });

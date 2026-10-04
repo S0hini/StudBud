@@ -1,5 +1,10 @@
 const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
-const MODEL_NAME = "openai/gpt-oss-120b"; // Stable default Groq model
+const GROQ_MODELS = [
+  "llama-3.3-70b-versatile",
+  "llama-3.1-8b-instant",
+  "mixtral-8x7b-32768",
+  "gemma2-9b-it"
+];
 
 export const getQuizQuestions = async (
   course: string,
@@ -36,28 +41,31 @@ export const getQuizQuestions = async (
       { role: "user", content: prompt }
     ];
 
-    const response = await fetch(GROQ_API_URL, {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${apiKey}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        model: MODEL_NAME,
-        messages,
-        max_tokens: 2048
-      })
-    });
+    let responseText = "";
+    for (const model of GROQ_MODELS) {
+      try {
+        const response = await fetch(GROQ_API_URL, {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${apiKey}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            model,
+            messages,
+            max_tokens: 2048
+          })
+        });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(
-        `Groq API error: ${response.status} ${response.statusText}${errorText ? ` - ${errorText}` : ''}`
-      );
+        if (response.ok) {
+          const data = await response.json();
+          responseText = data.choices?.[0]?.message?.content || "";
+          if (responseText) break;
+        }
+      } catch (err) {
+        console.warn(`[Quiz Groq] Model ${model} failed:`, err);
+      }
     }
-
-    const data = await response.json();
-    const responseText = data.choices?.[0]?.message?.content || "";
 
     // Extract JSON array from the response
     let jsonContent = responseText;

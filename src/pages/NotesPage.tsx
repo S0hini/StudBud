@@ -1,35 +1,28 @@
 import { useState, useEffect } from 'react';
+import { useSearchParams, useLocation } from 'react-router-dom';
 import { FileText, Loader, Youtube } from 'lucide-react';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { db } from '../lib/firebase';
 import { collection, addDoc, getDocs, query, orderBy, where } from "firebase/firestore";
 import { useAuthStore } from '../lib/store';
 import { generateContent as generateWithGroq } from '../lib/gemini';
+import { formatMathExpressions } from '../lib/mathFormatter';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeRaw from 'rehype-raw';
 import rehypeKatex from 'rehype-katex';
 
-export const formatMathExpressions = (text: string): string => {
-  if (!text) return '';
-  return text
-    // Replace \[ ... \] with $$ ... $$
-    .replace(/\\\[([\s\S]*?)\\\]/g, '$$$$$1$$$$')
-    // Replace \( ... \) with $ ... $
-    .replace(/\\\(([\s\S]*?)\\\)/g, '$$$1$$')
-    // Replace parentheses around LaTeX symbols like (\infty) or (\lim_{...}) with $...$
-    .replace(/\((\\[a-zA-Z]+(?:\{[^}]*\}|[^)])*)\)/g, '$$$1$$')
-    // Replace parentheses around powers like (a^{\infty}) with $...$
-    .replace(/\(([a-zA-Z0-9_.\-]+(?:\^[a-zA-Z0-9_.\-{}]+)+)\)/g, '$$$1$$');
-};
-
 export function NotesPage() {
   const { user } = useAuthStore();
+  const [searchParams] = useSearchParams();
+  const location = useLocation();
   const [loading, setLoading] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
   const [translatingTranscript, setTranslatingTranscript] = useState(false);
-  const [videoUrl, setVideoUrl] = useState('');
+  const [videoUrl, setVideoUrl] = useState(() => {
+    return searchParams.get('url') || searchParams.get('videoUrl') || (location.state as any)?.videoUrl || '';
+  });
   const [videoId, setVideoId] = useState('');
   const [transcript, setTranscript] = useState('');
   const [videoData, setVideoData] = useState<{ title: string, description: string } | null>(null);
@@ -46,6 +39,13 @@ export function NotesPage() {
   }
 
   const [savedNotes, setSavedNotes] = useState<Note[]>([]);
+
+  useEffect(() => {
+    const paramUrl = searchParams.get('url') || searchParams.get('videoUrl') || (location.state as any)?.videoUrl;
+    if (paramUrl && paramUrl !== videoUrl) {
+      setVideoUrl(paramUrl);
+    }
+  }, [searchParams, location.state]);
 
   useEffect(() => {
     if (user) {
